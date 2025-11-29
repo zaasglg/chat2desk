@@ -68,6 +68,17 @@ class ClientController extends Controller
         return response()->json(['success' => true]);
     }
 
+    public function updateNotes(Request $request, Client $client)
+    {
+        $request->validate([
+            'notes' => 'nullable|string|max:5000',
+        ]);
+
+        $client->update(['notes' => $request->notes]);
+
+        return response()->json(['success' => true]);
+    }
+
     public function destroy(Client $client)
     {
         $client->delete();

@@ -38,11 +38,14 @@ export interface User {
     email_verified_at: string | null;
     two_factor_enabled?: boolean;
     role?: 'admin' | 'operator' | 'viewer';
+    qualification?: number;
+    max_chats?: number;
     is_online?: boolean;
     last_seen_at?: string | null;
     created_at: string;
     updated_at: string;
     assigned_chats_count?: number;
+    operator_groups?: OperatorGroup[];
     [key: string]: unknown;
 }
 
@@ -202,4 +205,16 @@ export interface ChatStats {
     pending: number;
     resolved: number;
     unassigned: number;
+}
+
+export interface OperatorGroup {
+    id: number;
+    name: string;
+    color: string;
+    description?: string;
+    is_active: boolean;
+    created_at: string;
+    updated_at: string;
+    operators_count?: number;
+    operators?: (User & { pivot?: { is_supervisor: boolean } })[];
 }

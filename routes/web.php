@@ -7,6 +7,7 @@ use App\Http\Controllers\ChatController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\OperatorController;
+use App\Http\Controllers\OperatorGroupController;
 use App\Http\Controllers\QuickReplyController;
 use App\Http\Controllers\TagController;
 use App\Http\Controllers\TelegramWebhookController;
@@ -46,6 +47,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('clients/{client}', [ClientController::class, 'show'])->name('clients.show');
     Route::patch('clients/{client}', [ClientController::class, 'update'])->name('clients.update');
     Route::post('clients/{client}/tags', [ClientController::class, 'syncTags'])->name('clients.sync-tags');
+    Route::post('clients/{client}/notes', [ClientController::class, 'updateNotes'])->name('clients.update-notes');
     Route::delete('clients/{client}', [ClientController::class, 'destroy'])->name('clients.destroy');
 
     // Tags
@@ -69,6 +71,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::delete('operators/{operator}', [OperatorController::class, 'destroy'])->name('operators.destroy');
     Route::post('operators/toggle-online', [OperatorController::class, 'toggleOnline'])->name('operators.toggle-online');
     Route::get('api/operators/online', [OperatorController::class, 'online'])->name('operators.online');
+    Route::get('api/users', [OperatorController::class, 'users'])->name('api.users');
+
+    // Operator Groups
+    Route::get('api/operator-groups', [OperatorGroupController::class, 'index'])->name('operator-groups.index');
+    Route::post('api/operator-groups', [OperatorGroupController::class, 'store'])->name('operator-groups.store');
+    Route::patch('api/operator-groups/{operatorGroup}', [OperatorGroupController::class, 'update'])->name('operator-groups.update');
+    Route::delete('api/operator-groups/{operatorGroup}', [OperatorGroupController::class, 'destroy'])->name('operator-groups.destroy');
+    Route::post('api/operator-groups/{operatorGroup}/operators', [OperatorGroupController::class, 'addOperator'])->name('operator-groups.add-operator');
+    Route::delete('api/operator-groups/{operatorGroup}/operators/{user}', [OperatorGroupController::class, 'removeOperator'])->name('operator-groups.remove-operator');
+    Route::patch('api/operator-groups/{operatorGroup}/operators/{user}', [OperatorGroupController::class, 'updateOperator'])->name('operator-groups.update-operator');
+    Route::get('api/operator-groups/{operatorGroup}/operators', [OperatorGroupController::class, 'operators'])->name('operator-groups.operators');
 
     // Automations
     Route::get('automations', [AutomationController::class, 'index'])->name('automations.index');

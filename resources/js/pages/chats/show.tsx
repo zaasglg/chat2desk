@@ -2,6 +2,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import {
     Select,
     SelectContent,
@@ -81,6 +82,8 @@ export default function ChatShow({ chat, allTags }: Props) {
     const [clientTags, setClientTags] = useState<Tag[]>(chat.client?.tags || []);
     const [tagsOpen, setTagsOpen] = useState(false);
     const [messages, setMessages] = useState<Message[]>(chat.messages || []);
+    const [clientNotes, setClientNotes] = useState(chat.client?.notes || '');
+    const [savingNotes, setSavingNotes] = useState(false);
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: 'Чаты', href: '/chats' },
@@ -142,13 +145,48 @@ export default function ChatShow({ chat, allTags }: Props) {
 
         setSending(true);
         try {
+            let contentToSend = message;
+
+            // If message starts with a slash, try to resolve a quick-reply shortcut
+            const trimmed = message.trim();
+            if (trimmed.startsWith('/')) {
+                try {
+                    const q = encodeURIComponent(trimmed);
+                    const searchRes = await fetch(`/api/quick-replies/search?q=${q}`);
+                    if (searchRes.ok) {
+                        const results = await searchRes.json();
+                        // find exact shortcut match (server may return multiple suggestions)
+                        const match = results.find((r: any) => r.shortcut === trimmed);
+                        if (match) {
+                            // call use endpoint to increment usage and get canonical content
+                            const useRes = await fetch(`/quick-replies/${match.id}/use`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                                },
+                            });
+                            if (useRes.ok) {
+                                const payload = await useRes.json();
+                                if (payload && payload.content) {
+                                    contentToSend = payload.content;
+                                }
+                            }
+                        }
+                    }
+                } catch (err) {
+                    // ignore quick-reply lookup errors and fall back to sending raw message
+                    console.error('Quick-reply lookup failed', err);
+                }
+            }
+
             const response = await fetch(`/chats/${chat.id}/messages`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
                 },
-                body: JSON.stringify({ content: message }),
+                body: JSON.stringify({ content: contentToSend }),
             });
 
             if (response.ok) {
@@ -207,6 +245,26 @@ export default function ChatShow({ chat, allTags }: Props) {
         } catch (error) {
             console.error('Failed to remove tag:', error);
             setClientTags([...newTags, tag]);
+        }
+    };
+
+    const saveNotes = async () => {
+        if (!chat.client) return;
+        
+        setSavingNotes(true);
+        try {
+            await fetch(`/clients/${chat.client.id}/notes`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                },
+                body: JSON.stringify({ notes: clientNotes }),
+            });
+        } catch (error) {
+            console.error('Failed to save notes:', error);
+        } finally {
+            setSavingNotes(false);
         }
     };
 
@@ -378,13 +436,6 @@ export default function ChatShow({ chat, allTags }: Props) {
                                 </div>
                             )}
 
-                            {chat.client?.notes && (
-                                <div>
-                                    <p className="text-xs text-muted-foreground mb-1">Заметки</p>
-                                    <p className="text-sm">{chat.client.notes}</p>
-                                </div>
-                            )}
-
                             {/* Tags Section */}
                             <div>
                                 <p className="text-xs text-muted-foreground mb-2">Теги</p>
@@ -447,6 +498,21 @@ export default function ChatShow({ chat, allTags }: Props) {
                                         </PopoverContent>
                                     </Popover>
                                 </div>
+                            </div>
+
+                            {/* Notes/Comments Section */}
+                            <div>
+                                <p className="text-xs text-muted-foreground mb-2">Комментарий</p>
+                                <Textarea
+                                    value={clientNotes}
+                                    onChange={(e) => setClientNotes(e.target.value)}
+                                    onBlur={saveNotes}
+                                    placeholder="Добавьте комментарий о клиенте..."
+                                    className="min-h-[80px] text-sm resize-none"
+                                />
+                                {savingNotes && (
+                                    <p className="text-xs text-muted-foreground mt-1">Сохранение...</p>
+                                )}
                             </div>
                         </div>
                     </div>

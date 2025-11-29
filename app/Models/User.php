@@ -4,6 +4,7 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -24,6 +25,8 @@ class User extends Authenticatable
         'email',
         'password',
         'role', // admin, operator, viewer
+        'qualification',
+        'max_chats',
         'is_online',
         'last_seen_at',
     ];
@@ -79,5 +82,23 @@ class User extends Authenticatable
     public function isOperator(): bool
     {
         return in_array($this->role, ['admin', 'operator']);
+    }
+
+    /**
+     * Get groups this operator belongs to
+     */
+    public function operatorGroups(): BelongsToMany
+    {
+        return $this->belongsToMany(OperatorGroup::class, 'operator_group_user')
+            ->withPivot('is_supervisor')
+            ->withTimestamps();
+    }
+
+    /**
+     * Check if user is supervisor in any group
+     */
+    public function isSupervisor(): bool
+    {
+        return $this->operatorGroups()->wherePivot('is_supervisor', true)->exists();
     }
 }

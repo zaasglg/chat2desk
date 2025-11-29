@@ -29,6 +29,8 @@ class OperatorController extends Controller
             'email' => 'required|email|unique:users,email',
             'password' => 'required|min:8|confirmed',
             'role' => 'required|in:admin,operator,viewer',
+            'qualification' => 'nullable|integer|min:0|max:100',
+            'max_chats' => 'nullable|integer|min:1|max:100',
         ]);
 
         User::create([
@@ -36,6 +38,8 @@ class OperatorController extends Controller
             'email' => $request->email,
             'password' => Hash::make($request->password),
             'role' => $request->role,
+            'qualification' => $request->qualification ?? 0,
+            'max_chats' => $request->max_chats ?? 10,
         ]);
 
         return back()->with('success', 'Оператор создан');
@@ -44,17 +48,31 @@ class OperatorController extends Controller
     public function update(Request $request, User $operator)
     {
         $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:users,email,' . $operator->id,
+            'name' => 'sometimes|string|max:255',
+            'email' => 'sometimes|email|unique:users,email,' . $operator->id,
             'password' => 'nullable|min:8|confirmed',
-            'role' => 'required|in:admin,operator,viewer',
+            'role' => 'sometimes|in:admin,operator,viewer',
+            'qualification' => 'nullable|integer|min:0|max:100',
+            'max_chats' => 'nullable|integer|min:1|max:100',
         ]);
 
-        $data = [
-            'name' => $request->name,
-            'email' => $request->email,
-            'role' => $request->role,
-        ];
+        $data = [];
+        
+        if ($request->has('name')) {
+            $data['name'] = $request->name;
+        }
+        if ($request->has('email')) {
+            $data['email'] = $request->email;
+        }
+        if ($request->has('role')) {
+            $data['role'] = $request->role;
+        }
+        if ($request->has('qualification')) {
+            $data['qualification'] = $request->qualification;
+        }
+        if ($request->has('max_chats')) {
+            $data['max_chats'] = $request->max_chats;
+        }
 
         if ($request->filled('password')) {
             $data['password'] = Hash::make($request->password);
@@ -97,5 +115,14 @@ class OperatorController extends Controller
             ->get(['id', 'name', 'email', 'is_online']);
 
         return response()->json($operators);
+    }
+
+    /**
+     * Return a list of users for admin selects.
+     */
+    public function users()
+    {
+        $users = User::orderBy('name')->get(['id', 'name', 'email', 'avatar', 'role', 'qualification', 'max_chats']);
+        return response()->json($users);
     }
 }
