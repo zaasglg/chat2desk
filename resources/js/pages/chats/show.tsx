@@ -21,6 +21,7 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from '@/components/ui/popover';
+import { useToast } from '@/components/ui/toast';
 import { Checkbox } from '@/components/ui/checkbox';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem, type Chat, type Message, type Tag, type User } from '@/types';
@@ -84,6 +85,13 @@ export default function ChatShow({ chat, allTags }: Props) {
     const [messages, setMessages] = useState<Message[]>(chat.messages || []);
     const [clientNotes, setClientNotes] = useState(chat.client?.notes || '');
     const [savingNotes, setSavingNotes] = useState(false);
+    const [operators, setOperators] = useState<User[]>([]);
+    const [operatorGroups, setOperatorGroups] = useState<any[]>([]);
+    const [transferOpen, setTransferOpen] = useState(false);
+    const [selectedOperator, setSelectedOperator] = useState<number | null>(null);
+    const [selectedGroup, setSelectedGroup] = useState<number | null>(null);
+    const [assigning, setAssigning] = useState(false);
+    const toast = useToast();
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: 'Чаты', href: '/chats' },
@@ -133,6 +141,22 @@ export default function ChatShow({ chat, allTags }: Props) {
             window.removeEventListener('resize', updatePositions);
             window.removeEventListener('scroll', updatePositions, true);
         };
+    }, []);
+
+    useEffect(() => {
+        // preload operators and groups for transfer dropdown
+        (async () => {
+            try {
+                const [uRes, gRes] = await Promise.all([
+                    fetch('/api/users'),
+                    fetch('/api/operator-groups'),
+                ]);
+                if (uRes.ok) setOperators(await uRes.json());
+                if (gRes.ok) setOperatorGroups(await gRes.json());
+            } catch (err) {
+                console.error('Failed to fetch operators/groups', err);
+            }
+        })();
     }, []);
 
     const scrollToBottom = () => {
@@ -276,6 +300,57 @@ export default function ChatShow({ chat, allTags }: Props) {
         router.post(`/chats/${chat.id}/priority`, { priority }, { preserveScroll: true });
     };
 
+    const assignToOperator = async (operatorId: number | null) => {
+        setAssigning(true);
+        try {
+            const res = await fetch(`/chats/${chat.id}/assign`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                },
+                body: JSON.stringify({ operator_id: operatorId }),
+            });
+            if (res.ok) {
+                toast?.success('Чат назначен оператору');
+                // reload page to reflect assignment (simple approach)
+                window.location.reload();
+            } else {
+                toast?.error('Не удалось назначить оператора');
+            }
+        } catch (err) {
+            console.error(err);
+            toast?.error('Ошибка при назначении');
+        } finally {
+            setAssigning(false);
+        }
+    };
+
+    const assignToGroup = async (groupId: number | null) => {
+        setAssigning(true);
+        try {
+            const res = await fetch(`/chats/${chat.id}/assign`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                },
+                body: JSON.stringify({ operator_group_id: groupId }),
+            });
+            if (res.ok) {
+                toast?.success('Чат передан в группу');
+                window.location.reload();
+            } else {
+                toast?.error('Не удалось передать в группу');
+            }
+        } catch (err) {
+            console.error(err);
+            toast?.error('Ошибка при передаче в группу');
+        } finally {
+            setAssigning(false);
+        }
+    };
+
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={chat.client?.name || `Чат #${chat.id}`} />
@@ -340,6 +415,71 @@ export default function ChatShow({ chat, allTags }: Props) {
                                             ))}
                                         </SelectContent>
                                     </Select>
+                                    {/* Transfer control */}
+                                    <Popover open={transferOpen} onOpenChange={setTransferOpen}>
+                                        <PopoverTrigger asChild>
+                                            <Button variant="outline" size="sm" className="h-8 ml-2">
+                                                Передать
+                                            </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-72 p-3">
+                                            <div className="space-y-2">
+                                                <div>
+                                                    <p className="text-xs text-muted-foreground mb-1">Назначить оператору</p>
+                                                    <Select
+                                                        value={selectedOperator ? String(selectedOperator) : ''}
+                                                        onValueChange={(v) => setSelectedOperator(v ? Number(v) : null)}
+                                                    >
+                                                        <SelectTrigger>
+                                                            <SelectValue placeholder="Выберите оператора" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {operators.map((op) => (
+                                                                <SelectItem key={op.id} value={String(op.id)}>
+                                                                    {op.name} {op.email ? `(${op.email})` : ''}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                    <div className="mt-2 flex gap-2">
+                                                        <Button size="sm" onClick={() => assignToOperator(selectedOperator)} disabled={assigning}>
+                                                            Назначить
+                                                        </Button>
+                                                        <Button size="sm" variant="ghost" onClick={() => assignToOperator(null)} disabled={assigning}>
+                                                            Снять назначение
+                                                        </Button>
+                                                    </div>
+                                                </div>
+
+                                                <div className="pt-2">
+                                                    <p className="text-xs text-muted-foreground mb-1">Передать группе</p>
+                                                    <Select
+                                                        value={selectedGroup ? String(selectedGroup) : ''}
+                                                        onValueChange={(v) => setSelectedGroup(v ? Number(v) : null)}
+                                                    >
+                                                        <SelectTrigger>
+                                                            <SelectValue placeholder="Выберите группу" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {operatorGroups.map((g) => (
+                                                                <SelectItem key={g.id} value={String(g.id)}>
+                                                                    {g.name}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                    <div className="mt-2 flex gap-2">
+                                                        <Button size="sm" onClick={() => assignToGroup(selectedGroup)} disabled={assigning}>
+                                                            Передать
+                                                        </Button>
+                                                        <Button size="sm" variant="ghost" onClick={() => assignToGroup(null)} disabled={assigning}>
+                                                            Снять группу
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </PopoverContent>
+                                    </Popover>
                                 </div>
                             </div>
                         </div>

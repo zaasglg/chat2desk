@@ -97,14 +97,37 @@ class ChatController extends Controller
     {
         $request->validate([
             'operator_id' => 'nullable|exists:users,id',
+            'operator_group_id' => 'nullable|exists:operator_groups,id',
         ]);
 
+        // If operator_id is provided, assign to operator and clear group.
+        if ($request->filled('operator_id')) {
+            $chat->update([
+                'operator_id' => $request->operator_id,
+                'operator_group_id' => null,
+                'status' => 'open',
+            ]);
+            return back()->with('success', 'Чат назначен оператору');
+        }
+
+        // If operator_group_id provided, assign to group and clear operator
+        if ($request->filled('operator_group_id')) {
+            $chat->update([
+                'operator_group_id' => $request->operator_group_id,
+                'operator_id' => null,
+                'status' => 'open',
+            ]);
+            return back()->with('success', 'Чат передан в группу операторов');
+        }
+
+        // If neither provided, unassign
         $chat->update([
-            'operator_id' => $request->operator_id,
-            'status' => $request->operator_id ? 'open' : 'new',
+            'operator_id' => null,
+            'operator_group_id' => null,
+            'status' => 'new',
         ]);
 
-        return back()->with('success', 'Чат назначен');
+        return back()->with('success', 'Чат переведен в не назначенные');
     }
 
     public function updateStatus(Request $request, Chat $chat)

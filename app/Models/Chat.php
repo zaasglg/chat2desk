@@ -15,6 +15,7 @@ class Chat extends Model
         'channel_id',
         'client_id',
         'operator_id',
+        'operator_group_id',
         'status', // new, open, pending, resolved, closed
         'priority', // low, normal, high, urgent
         'subject',
@@ -42,6 +43,11 @@ class Chat extends Model
     public function operator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'operator_id');
+    }
+
+    public function operatorGroup(): BelongsTo
+    {
+        return $this->belongsTo(OperatorGroup::class, 'operator_group_id');
     }
 
     public function messages(): HasMany

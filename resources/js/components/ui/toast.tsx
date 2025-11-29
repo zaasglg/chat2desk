@@ -47,7 +47,14 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
 export function useToast() {
   const ctx = useContext(ToastContext);
-  if (!ctx) throw new Error('useToast must be used within ToastProvider');
+  // Be resilient in dev/HMR scenarios: if provider is missing, return no-op functions
+  if (!ctx) {
+    return {
+      success: (_title: string, _description?: string) => {},
+      error: (_title: string, _description?: string) => {},
+      info: (_title: string, _description?: string) => {},
+    };
+  }
   return {
     success: (title: string, description?: string) => ctx.toast({ title, description, type: 'success' }),
     error: (title: string, description?: string) => ctx.toast({ title, description, type: 'error' }),
