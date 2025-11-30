@@ -77,6 +77,15 @@ const channelIcons: Record<string, string> = {
 export default function ChatShow({ chat, allTags }: Props) {
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const chatColumnRef = useRef<HTMLDivElement | null>(null);
+    const autoScrollRef = useRef<boolean>(true);
+    const prevChatElRef = useRef<HTMLElement | null>(null);
+    const onChatScroll = () => {
+        const el = chatColumnRef.current;
+        if (!el) return;
+        const threshold = 150; // px from bottom to consider as "near bottom"
+        const atBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < threshold;
+        autoScrollRef.current = atBottom;
+    };
     const [footerStyle, setFooterStyle] = useState<{ left?: number; width?: number }>({});
     const [message, setMessage] = useState('');
     const [sending, setSending] = useState(false);
@@ -99,8 +108,10 @@ export default function ChatShow({ chat, allTags }: Props) {
     ];
 
     useEffect(() => {
-        scrollToBottom();
-    }, [messages]);
+        if (autoScrollRef.current) {
+            scrollToBottom();
+        }
+    }, []);
 
     // Polling для получения новых сообщений
     useEffect(() => {
@@ -135,11 +146,11 @@ export default function ChatShow({ chat, allTags }: Props) {
         updatePositions();
 
         window.addEventListener('resize', updatePositions);
-        window.addEventListener('scroll', updatePositions, true);
 
         return () => {
             window.removeEventListener('resize', updatePositions);
-            window.removeEventListener('scroll', updatePositions, true);
+            // remove scroll listener from previous element if any
+            if (prevChatElRef.current) prevChatElRef.current.removeEventListener('scroll', onChatScroll);
         };
     }, []);
 
@@ -217,6 +228,8 @@ export default function ChatShow({ chat, allTags }: Props) {
                 const newMessage = await response.json();
                 setMessages((prev) => [...prev, newMessage]);
                 setMessage('');
+                // force-scroll to show sent message
+                scrollToBottom();
             }
         } catch (error) {
             console.error('Failed to send message:', error);
@@ -356,7 +369,24 @@ export default function ChatShow({ chat, allTags }: Props) {
             <Head title={chat.client?.name || `Чат #${chat.id}`} />
             <div className="flex h-full min-h-0">
                 {/* Chat Area */}
-                <div ref={(el) => { if (el) chatColumnRef.current = el }} className="flex flex-1 flex-col min-h-0 h-screen">
+                <div
+                    ref={(el) => {
+                        // detach listener from previous element
+                        if (prevChatElRef.current && prevChatElRef.current !== el) {
+                            prevChatElRef.current.removeEventListener('scroll', onChatScroll);
+                        }
+
+                        chatColumnRef.current = el;
+                        prevChatElRef.current = el;
+
+                        if (el) {
+                            el.addEventListener('scroll', onChatScroll, { passive: true });
+                            // initialize auto-scroll flag
+                            onChatScroll();
+                        }
+                    }}
+                    className="flex flex-1 flex-col min-h-0 h-screen"
+                >
                     {/* Scrollable area: header + messages share the same scroll container */}
                     <div className="flex-1 min-h-0 overflow-auto">
                         {/* Header (sticky inside scroll container) */}
@@ -664,6 +694,9 @@ export default function ChatShow({ chat, allTags }: Props) {
 
 function MessageBubble({ message }: { message: Message }) {
     const isOutgoing = message.direction === 'outgoing';
+    // detect system messages via explicit system_action metadata
+    const meta: any = message.metadata || {};
+    const isSystem = Boolean(meta.system_action);
 
     const formatTime = (date: string) => {
         return new Date(date).toLocaleTimeString('ru-RU', {
@@ -687,13 +720,27 @@ function MessageBubble({ message }: { message: Message }) {
         }
     };
 
+    // Системное сообщение - отображаем по центру
+    if (isSystem) {
+        return (
+            <div className="flex justify-center">
+                <div className="max-w-[80%] rounded-lg bg-gray-100 px-4 py-2 text-center">
+                    <p className="text-sm text-gray-600">{message.content}</p>
+                    <div className="mt-1 text-xs text-gray-400">
+                        {formatTime(message.created_at)}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className={`flex ${isOutgoing ? 'justify-end' : 'justify-start'}`}>
             <div
                 className={`max-w-[70%] rounded-lg px-4 py-2 ${
                     isOutgoing
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-muted'
+                        ? 'bg-sky-500 text-white'
+                        : 'bg-sky-100 text-sky-900'
                 }`}
             >
                 {message.reply_to && (
@@ -706,27 +753,48 @@ function MessageBubble({ message }: { message: Message }) {
 
                 {message.type === 'text' && <p>{message.content}</p>}
 
-                {message.type === 'image' && message.attachments?.map((att, i) => (
-                    <img
-                        key={i}
-                        src={`/storage/${att.path}`}
-                        alt={att.name}
-                        className="max-h-60 rounded"
-                    />
-                ))}
+                {message.attachments?.map((att, i) => {
+                    const a: any = att;
+                    const url = a.url || (att.path ? `/storage/${att.path}` : null);
+                    const type = a.type || message.type || '';
 
-                {message.type === 'file' && message.attachments?.map((att, i) => (
-                    <a
-                        key={i}
-                        href={`/storage/${att.path}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-2 underline"
-                    >
-                        <Paperclip className="h-4 w-4" />
-                        {att.name}
-                    </a>
-                ))}
+                    if (!url) return null;
+
+                    if (type === 'image') {
+                        return (
+                            <img
+                                key={i}
+                                src={url}
+                                alt={att.name || 'image'}
+                                className="max-h-60 rounded mb-2"
+                            />
+                        );
+                    }
+
+                    if (type === 'video') {
+                        return (
+                            <video key={i} controls className="max-h-80 rounded mb-2 w-full">
+                                <source src={url} />
+                                Ваш браузер не поддерживает видео.
+                            </video>
+                        );
+                    }
+
+                    // default: treat as downloadable file
+                    const fileName = att.name || a.filename || (att.path ? att.path.split('/').pop() : url.split('/').pop());
+                    return (
+                        <a
+                            key={i}
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 underline"
+                        >
+                            <Paperclip className="h-4 w-4" />
+                            {fileName}
+                        </a>
+                    );
+                })}
 
                 <div className={`mt-1 flex items-center justify-end gap-1 text-xs ${
                     isOutgoing ? 'text-primary-foreground/70' : 'text-muted-foreground'

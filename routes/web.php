@@ -7,10 +7,12 @@ use App\Http\Controllers\ChatController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\OperatorController;
+use App\Http\Controllers\OperatorDemoController;
 use App\Http\Controllers\OperatorGroupController;
 use App\Http\Controllers\QuickReplyController;
 use App\Http\Controllers\TagController;
 use App\Http\Controllers\TelegramWebhookController;
+use App\Http\Controllers\FileUploadController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Laravel\Fortify\Features;
@@ -66,6 +68,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // Operators
     Route::get('operators', [OperatorController::class, 'index'])->name('operators.index');
+    Route::get('operators/demo', [OperatorDemoController::class, 'index'])->name('operators.demo');
     Route::post('operators', [OperatorController::class, 'store'])->name('operators.store');
     Route::patch('operators/{operator}', [OperatorController::class, 'update'])->name('operators.update');
     Route::delete('operators/{operator}', [OperatorController::class, 'destroy'])->name('operators.destroy');
@@ -92,8 +95,16 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::delete('automations/{automation}', [AutomationController::class, 'destroy'])->name('automations.destroy');
     Route::post('automations/{automation}/toggle', [AutomationController::class, 'toggle'])->name('automations.toggle');
 
+    // Broadcasts
+    Route::get('broadcasts/create', [\App\Http\Controllers\BroadcastController::class, 'create'])->name('broadcasts.create');
+    Route::post('broadcasts', [\App\Http\Controllers\BroadcastController::class, 'store'])->name('broadcasts.store');
+
     // Analytics
     Route::get('analytics', [AnalyticsController::class, 'index'])->name('analytics.index');
+
+    // File Upload
+    Route::post('api/upload/automation-file', [FileUploadController::class, 'uploadAutomationFile'])->name('upload.automation-file');
+    Route::delete('api/upload/automation-file', [FileUploadController::class, 'deleteAutomationFile'])->name('delete.automation-file');
 });
 
 // Telegram Webhook (public, no auth)

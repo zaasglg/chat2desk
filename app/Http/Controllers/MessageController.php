@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Chat;
 use App\Models\Message;
+use App\Services\TelegramService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -44,12 +45,29 @@ class MessageController extends Controller
             }
         }
 
+        // Determine message type based on attachments if not provided
+        $messageType = $request->type ?? 'text';
+        if (!$request->type && !empty($attachments)) {
+            $firstAttachment = $attachments[0];
+            $mimeType = $firstAttachment['mime'] ?? '';
+            
+            if (str_starts_with($mimeType, 'image/')) {
+                $messageType = 'image';
+            } elseif (str_starts_with($mimeType, 'video/')) {
+                $messageType = 'video';
+            } elseif (str_starts_with($mimeType, 'audio/')) {
+                $messageType = 'audio';
+            } else {
+                $messageType = 'file';
+            }
+        }
+
         $message = Message::create([
             'chat_id' => $chat->id,
             'channel_id' => $chat->channel_id,
             'operator_id' => auth()->id(),
             'direction' => 'outgoing',
-            'type' => $request->type ?? 'text',
+            'type' => $messageType,
             'content' => $request->content,
             'attachments' => $attachments ?: null,
             'reply_to_id' => $request->reply_to_id,
@@ -78,14 +96,6 @@ class MessageController extends Controller
             return false;
         }
 
-        $credentials = $channel->credentials ?? [];
-        $botToken = $credentials['bot_token'] ?? null;
-
-        if (!$botToken) {
-            Log::error('Telegram: bot token not found', ['channel_id' => $channel->id]);
-            return false;
-        }
-
         // Get telegram chat_id from chat metadata
         $metadata = $chat->metadata ?? [];
         $telegramChatId = $metadata['telegram_chat_id'] ?? null;
@@ -95,18 +105,41 @@ class MessageController extends Controller
             return false;
         }
 
-        try {
-            $response = Http::post("https://api.telegram.org/bot{$botToken}/sendMessage", [
-                'chat_id' => $telegramChatId,
-                'text' => $message->content,
-                'parse_mode' => 'HTML',
-            ]);
+        $telegramService = app(\App\Services\TelegramService::class);
+        $result = null;
 
-            if ($response->successful() && $response->json('ok')) {
-                $result = $response->json('result');
+        try {
+            // Handle different message types
+            if ($message->attachments && count($message->attachments) > 0) {
+                $attachment = $message->attachments[0]; // Take first attachment
+                $filePath = $attachment['path'] ?? null;
+                $caption = $message->content ?? '';
+
+                if ($filePath) {
+                    // Determine file type by MIME type or extension
+                    $mimeType = $attachment['mime'] ?? '';
+                    $isImage = str_starts_with($mimeType, 'image/') || 
+                              in_array(strtolower(pathinfo($filePath, PATHINFO_EXTENSION)), ['jpg', 'jpeg', 'png', 'gif', 'webp']);
+                    $isVideo = str_starts_with($mimeType, 'video/') || 
+                              in_array(strtolower(pathinfo($filePath, PATHINFO_EXTENSION)), ['mp4', 'avi', 'mov', 'wmv', 'flv', 'webm']);
+
+                    if ($isImage) {
+                        $result = $telegramService->sendPhoto($channel, $telegramChatId, $filePath, $caption);
+                    } elseif ($isVideo) {
+                        $result = $telegramService->sendVideo($channel, $telegramChatId, $filePath, $caption);
+                    } else {
+                        $result = $telegramService->sendDocument($channel, $telegramChatId, $filePath, $caption);
+                    }
+                }
+            } else {
+                // Send text message
+                $result = $telegramService->sendMessage($channel, $telegramChatId, $message->content ?? '');
+            }
+
+            if ($result) {
                 $message->update([
                     'metadata' => array_merge($message->metadata ?? [], [
-                        'telegram_message_id' => $result['message_id'],
+                        'telegram_message_id' => $result['message_id'] ?? null,
                     ]),
                 ]);
                 return true;
@@ -114,7 +147,7 @@ class MessageController extends Controller
 
             Log::error('Telegram: failed to send message', [
                 'chat_id' => $chat->id,
-                'response' => $response->json(),
+                'message_type' => $message->type,
             ]);
             return false;
         } catch (\Exception $e) {

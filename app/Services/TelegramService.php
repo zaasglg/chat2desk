@@ -132,20 +132,62 @@ class TelegramService
         }
 
         try {
-            $params = [
-                'chat_id' => $chatId,
-                'photo' => $photo,
-            ];
+            // Check if photo is a local file path
+            $isLocalFile = !str_starts_with($photo, 'http') && !str_starts_with($photo, 'tg://');
             
-            if ($caption) {
-                $params['caption'] = $caption;
-                $params['parse_mode'] = 'HTML';
-            }
+            if ($isLocalFile) {
+                // Convert storage path to absolute path
+                if (str_starts_with($photo, '/storage/')) {
+                    $filePath = public_path($photo);
+                } elseif (str_starts_with($photo, 'storage/')) {
+                    $filePath = public_path('/' . $photo);
+                } else {
+                    $filePath = storage_path('app/public/' . $photo);
+                }
+                
+                Log::info('Sending local file as photo', [
+                    'original_path' => $photo,
+                    'file_path' => $filePath,
+                    'exists' => file_exists($filePath)
+                ]);
+                
+                if (!file_exists($filePath)) {
+                    Log::error('Photo file not found', ['path' => $filePath]);
+                    return null;
+                }
+                
+                // Upload file as multipart
+                $response = Http::attach(
+                    'photo',
+                    file_get_contents($filePath),
+                    basename($filePath)
+                )->post("https://api.telegram.org/bot{$botToken}/sendPhoto", [
+                    'chat_id' => $chatId,
+                    'caption' => $caption ?: null,
+                    'parse_mode' => $caption ? 'HTML' : null,
+                ]);
+            } else {
+                // Send as URL
+                $params = [
+                    'chat_id' => $chatId,
+                    'photo' => $photo,
+                ];
+                
+                if ($caption) {
+                    $params['caption'] = $caption;
+                    $params['parse_mode'] = 'HTML';
+                }
 
-            $response = Http::post("https://api.telegram.org/bot{$botToken}/sendPhoto", $params);
+                $response = Http::post("https://api.telegram.org/bot{$botToken}/sendPhoto", $params);
+            }
 
             if ($response->successful() && $response->json('ok')) {
                 return $response->json('result');
+            } else {
+                Log::error('Telegram sendPhoto failed', [
+                    'response' => $response->json(),
+                    'status' => $response->status()
+                ]);
             }
         } catch (\Exception $e) {
             Log::error('Telegram sendPhoto error', [
@@ -171,20 +213,62 @@ class TelegramService
         }
 
         try {
-            $params = [
-                'chat_id' => $chatId,
-                'video' => $video,
-            ];
+            // Check if video is a local file path
+            $isLocalFile = !str_starts_with($video, 'http') && !str_starts_with($video, 'tg://');
             
-            if ($caption) {
-                $params['caption'] = $caption;
-                $params['parse_mode'] = 'HTML';
-            }
+            if ($isLocalFile) {
+                // Convert storage path to absolute path
+                if (str_starts_with($video, '/storage/')) {
+                    $filePath = public_path($video);
+                } elseif (str_starts_with($video, 'storage/')) {
+                    $filePath = public_path('/' . $video);
+                } else {
+                    $filePath = storage_path('app/public/' . $video);
+                }
+                
+                Log::info('Sending local file as video', [
+                    'original_path' => $video,
+                    'file_path' => $filePath,
+                    'exists' => file_exists($filePath)
+                ]);
+                
+                if (!file_exists($filePath)) {
+                    Log::error('Video file not found', ['path' => $filePath]);
+                    return null;
+                }
+                
+                // Upload file as multipart
+                $response = Http::attach(
+                    'video',
+                    file_get_contents($filePath),
+                    basename($filePath)
+                )->post("https://api.telegram.org/bot{$botToken}/sendVideo", [
+                    'chat_id' => $chatId,
+                    'caption' => $caption ?: null,
+                    'parse_mode' => $caption ? 'HTML' : null,
+                ]);
+            } else {
+                // Send as URL
+                $params = [
+                    'chat_id' => $chatId,
+                    'video' => $video,
+                ];
+                
+                if ($caption) {
+                    $params['caption'] = $caption;
+                    $params['parse_mode'] = 'HTML';
+                }
 
-            $response = Http::post("https://api.telegram.org/bot{$botToken}/sendVideo", $params);
+                $response = Http::post("https://api.telegram.org/bot{$botToken}/sendVideo", $params);
+            }
 
             if ($response->successful() && $response->json('ok')) {
                 return $response->json('result');
+            } else {
+                Log::error('Telegram sendVideo failed', [
+                    'response' => $response->json(),
+                    'status' => $response->status()
+                ]);
             }
         } catch (\Exception $e) {
             Log::error('Telegram sendVideo error', [
@@ -210,20 +294,62 @@ class TelegramService
         }
 
         try {
-            $params = [
-                'chat_id' => $chatId,
-                'document' => $document,
-            ];
+            // Check if document is a local file path
+            $isLocalFile = !str_starts_with($document, 'http') && !str_starts_with($document, 'tg://');
             
-            if ($caption) {
-                $params['caption'] = $caption;
-                $params['parse_mode'] = 'HTML';
-            }
+            if ($isLocalFile) {
+                // Convert storage path to absolute path
+                if (str_starts_with($document, '/storage/')) {
+                    $filePath = public_path($document);
+                } elseif (str_starts_with($document, 'storage/')) {
+                    $filePath = public_path('/' . $document);
+                } else {
+                    $filePath = storage_path('app/public/' . $document);
+                }
+                
+                Log::info('Sending local file as document', [
+                    'original_path' => $document,
+                    'file_path' => $filePath,
+                    'exists' => file_exists($filePath)
+                ]);
+                
+                if (!file_exists($filePath)) {
+                    Log::error('Document file not found', ['path' => $filePath]);
+                    return null;
+                }
+                
+                // Upload file as multipart
+                $response = Http::attach(
+                    'document',
+                    file_get_contents($filePath),
+                    basename($filePath)
+                )->post("https://api.telegram.org/bot{$botToken}/sendDocument", [
+                    'chat_id' => $chatId,
+                    'caption' => $caption ?: null,
+                    'parse_mode' => $caption ? 'HTML' : null,
+                ]);
+            } else {
+                // Send as URL
+                $params = [
+                    'chat_id' => $chatId,
+                    'document' => $document,
+                ];
+                
+                if ($caption) {
+                    $params['caption'] = $caption;
+                    $params['parse_mode'] = 'HTML';
+                }
 
-            $response = Http::post("https://api.telegram.org/bot{$botToken}/sendDocument", $params);
+                $response = Http::post("https://api.telegram.org/bot{$botToken}/sendDocument", $params);
+            }
 
             if ($response->successful() && $response->json('ok')) {
                 return $response->json('result');
+            } else {
+                Log::error('Telegram sendDocument failed', [
+                    'response' => $response->json(),
+                    'status' => $response->status()
+                ]);
             }
         } catch (\Exception $e) {
             Log::error('Telegram sendDocument error', [
@@ -347,6 +473,10 @@ class TelegramService
             'content' => mb_substr($content, 0, 50),
         ]);
 
+        // Check for paused automation first
+        $automationService = app(AutomationService::class);
+        $automationService->checkPausedAutomation($chat, $newMessage);
+        
         // Trigger automations
         $this->triggerAutomations($chat, $newMessage, $isNewChat);
     }

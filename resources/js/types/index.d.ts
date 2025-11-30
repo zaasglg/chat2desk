@@ -137,6 +137,10 @@ export interface Attachment {
     name: string;
     mime: string;
     size: number;
+    // optional fields used in various places
+    url?: string;
+    type?: string; // 'image' | 'video' | 'file' ...
+    filename?: string;
 }
 
 export interface QuickReply {

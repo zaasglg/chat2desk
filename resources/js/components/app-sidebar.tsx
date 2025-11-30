@@ -23,6 +23,7 @@ import {
     Settings,
     Tags,
     Workflow,
+    Mail,
 } from 'lucide-react';
 import AppLogo from './app-logo';
 
@@ -66,6 +67,11 @@ const mainNavItems: NavItem[] = [
         title: 'Быстрые ответы',
         href: '/quick-replies',
         icon: Zap,
+    },
+    {
+        title: 'Рассылки',
+        href: '/broadcasts/create',
+        icon: Mail,
     },
     {
         title: 'Аналитика',
