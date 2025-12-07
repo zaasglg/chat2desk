@@ -16,27 +16,28 @@ class ChatController extends Controller
             ->where('is_active', true)
             ->pluck('id');
 
-        $query = Chat::with(['client', 'channel', 'operator', 'latestMessage'])
+        $query = Chat::with(['client.tags', 'channel', 'operator', 'latestMessage'])
             ->whereIn('channel_id', $activeChannelIds)
             ->orderBy('last_message_at', 'desc');
 
-        // Filter by status
-        if ($request->has('status') && $request->status !== 'all') {
-            $query->where('status', $request->status);
+        $user = auth()->user();
+        $isAdmin = $user && $user->role === 'admin';
+
+        // Filter by category
+        $category = $request->get('category', 'all');
+        
+        if ($category === 'unread') {
+            // Непрочитанные чаты: чаты с непрочитанными входящими сообщениями
+            $query->whereHas('messages', function ($q) {
+                $q->where('direction', 'incoming')
+                  ->whereNull('read_at');
+            });
         }
 
-        // Filter by channel
-        if ($request->has('channel_id') && $request->channel_id) {
-            $query->where('channel_id', $request->channel_id);
-        }
-
-        // Filter by operator
-        if ($request->has('operator_id')) {
-            if ($request->operator_id === 'unassigned') {
-                $query->whereNull('operator_id');
-            } elseif ($request->operator_id) {
-                $query->where('operator_id', $request->operator_id);
-            }
+        // Filter by user role
+        if (!$isAdmin) {
+            // Для оператора показываем только его чаты
+            $query->where('operator_id', $user->id);
         }
 
         // Search
@@ -49,31 +50,60 @@ class ChatController extends Controller
             });
         }
 
-        $chats = $query->paginate(50);
+        $firstChat = $query->first();
         
-        // Only show active Telegram channels
+        if ($firstChat) {
+            // Redirect to first chat with filters
+            $params = array_merge(
+                ['chat' => $firstChat->id],
+                $request->only(['category', 'search'])
+            );
+            return redirect()->route('chats.show', $params);
+        }
+
+        // If no chats, show empty state
         $channels = Channel::where('type', 'telegram')
             ->where('is_active', true)
             ->get();
 
-        // Stats - only for active channels
+        // Calculate stats
+        $baseQuery = Chat::whereIn('channel_id', $activeChannelIds);
+        if (!$isAdmin) {
+            $baseQuery->where('operator_id', $user->id);
+        }
+
+        $allChatsCount = (clone $baseQuery)->count();
+        $unreadChatsCount = (clone $baseQuery)
+            ->whereHas('messages', function ($q) {
+                $q->where('direction', 'incoming')
+                  ->whereNull('read_at');
+            })
+            ->count();
+
         $stats = [
-            'new' => Chat::whereIn('channel_id', $activeChannelIds)->where('status', 'new')->count(),
-            'open' => Chat::whereIn('channel_id', $activeChannelIds)->where('status', 'open')->count(),
-            'pending' => Chat::whereIn('channel_id', $activeChannelIds)->where('status', 'pending')->count(),
-            'resolved' => Chat::whereIn('channel_id', $activeChannelIds)->where('status', 'resolved')->count(),
-            'unassigned' => Chat::whereIn('channel_id', $activeChannelIds)->whereNull('operator_id')->whereIn('status', ['new', 'open'])->count(),
+            'all' => $allChatsCount,
+            'unread' => $unreadChatsCount,
         ];
 
-        return Inertia::render('chats/index', [
-            'chats' => $chats,
+        // Create a dummy chat object for empty state
+        $emptyChat = new Chat();
+        $emptyChat->id = 0;
+        $emptyChat->client = null;
+        $emptyChat->messages = collect([]);
+        $emptyChat->channel = null;
+        $emptyChat->operator = null;
+
+        return Inertia::render('chats/show', [
+            'chat' => $emptyChat,
+            'allTags' => \App\Models\Tag::orderBy('name')->get(),
+            'chats' => collect([]),
             'channels' => $channels,
             'stats' => $stats,
-            'filters' => $request->only(['status', 'channel_id', 'operator_id', 'search']),
+            'filters' => $request->only(['category', 'search']),
         ]);
     }
 
-    public function show(Chat $chat)
+    public function show(Request $request, Chat $chat)
     {
         $chat->load(['client.tags', 'channel', 'operator', 'messages.operator']);
 
@@ -87,9 +117,81 @@ class ChatController extends Controller
 
         $allTags = \App\Models\Tag::orderBy('name')->get();
 
+        // Load chats list for sidebar
+        $activeChannelIds = Channel::where('type', 'telegram')
+            ->where('is_active', true)
+            ->pluck('id');
+
+        $chatsQuery = Chat::with(['client.tags', 'channel', 'operator', 'latestMessage'])
+            ->whereIn('channel_id', $activeChannelIds);
+
+        $user = auth()->user();
+        $isAdmin = $user && $user->role === 'admin';
+
+        // Filter by category
+        $category = $request->get('category', 'all');
+        
+        if ($category === 'unread') {
+            // Непрочитанные чаты: чаты с непрочитанными входящими сообщениями
+            $chatsQuery->whereHas('messages', function ($q) {
+                $q->where('direction', 'incoming')
+                  ->whereNull('read_at');
+            });
+        }
+
+        // Filter by user role
+        if (!$isAdmin) {
+            // Для оператора показываем только его чаты
+            $chatsQuery->where('operator_id', $user->id);
+        }
+        // Для админа показываем все чаты (без фильтра)
+
+        // Search
+        if ($request->has('search') && $request->search) {
+            $search = $request->search;
+            $chatsQuery->whereHas('client', function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                    ->orWhere('phone', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%");
+            });
+        }
+
+        $chatsQuery->orderBy('last_message_at', 'desc');
+
+        $chats = $chatsQuery->limit(100)->get();
+        
+        $channels = Channel::where('type', 'telegram')
+            ->where('is_active', true)
+            ->get();
+
+        // Calculate stats for categories
+        $baseQuery = Chat::whereIn('channel_id', $activeChannelIds);
+        if (!$isAdmin) {
+            $baseQuery->where('operator_id', $user->id);
+        }
+
+        $allChatsCount = (clone $baseQuery)->count();
+        
+        // Непрочитанные: чаты с непрочитанными входящими сообщениями
+        $unreadChatsCount = (clone $baseQuery)
+            ->whereHas('messages', function ($q) {
+                $q->where('direction', 'incoming')
+                  ->whereNull('read_at');
+            })
+            ->count();
+
+        $stats = [
+            'all' => $allChatsCount,
+            'unread' => $unreadChatsCount,
+        ];
+
         return Inertia::render('chats/show', [
             'chat' => $chat,
             'allTags' => $allTags,
+            'chats' => $chats,
+            'channels' => $channels,
+            'stats' => $stats,
+            'filters' => $request->only(['category', 'search']),
         ]);
     }
 

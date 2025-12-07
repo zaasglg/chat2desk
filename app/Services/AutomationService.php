@@ -445,49 +445,71 @@ class AutomationService
      */
     protected function executeStepAddTag(Chat $chat, array $config): void
     {
-        $tagId = $config['tag_id'] ?? null;
-        $tagName = $config['tag_name'] ?? null;
-
         $client = $chat->client;
         if (!$client) {
             return;
         }
 
-        // Find tag by ID or name
-        $tag = null;
-        if ($tagId) {
+        $tagIds = $config['tag_ids'] ?? [];
+        $tagId = $config['tag_id'] ?? null; // Backward compatibility
+        $tagName = $config['tag_name'] ?? null; // Backward compatibility
+
+        $tagsToAdd = [];
+
+        // Support multiple tags via tag_ids array
+        if (!empty($tagIds) && is_array($tagIds)) {
+            foreach ($tagIds as $id) {
+                $tag = Tag::find($id);
+                if ($tag) {
+                    $tagsToAdd[] = $tag;
+                }
+            }
+        }
+        // Backward compatibility: single tag via tag_id
+        elseif ($tagId) {
             $tag = Tag::find($tagId);
-        } elseif ($tagName) {
+            if ($tag) {
+                $tagsToAdd[] = $tag;
+            }
+        }
+        // Backward compatibility: single tag via tag_name
+        elseif ($tagName) {
             $tag = Tag::where('name', $tagName)->first();
-            // Create tag if not exists
             if (!$tag) {
                 $tag = Tag::create([
                     'name' => $tagName,
                     'color' => '#' . substr(md5($tagName), 0, 6),
                 ]);
             }
+            if ($tag) {
+                $tagsToAdd[] = $tag;
+            }
         }
 
-        if ($tag) {
-            $client->tags()->syncWithoutDetaching([$tag->id]);
-            Log::info('Tag added to client', [
+        if (!empty($tagsToAdd)) {
+            $tagIdsToAdd = array_map(fn($tag) => $tag->id, $tagsToAdd);
+            $client->tags()->syncWithoutDetaching($tagIdsToAdd);
+            
+            $tagNames = array_map(fn($tag) => $tag->name, $tagsToAdd);
+            
+            Log::info('Tags added to client', [
                 'client_id' => $client->id,
-                'tag_id' => $tag->id,
+                'tag_ids' => $tagIdsToAdd,
             ]);
 
-            // Создаем системное сообщение о добавлении тега
-            // Store as an outgoing text message but mark in metadata as a system action
+            // Создаем системное сообщение о добавлении тегов
+            $tagNamesString = implode('", "', $tagNames);
             Message::create([
                 'chat_id' => $chat->id,
                 'channel_id' => $chat->channel_id,
                 'direction' => 'outgoing',
                 'type' => 'text',
-                'content' => 'Система присвоила клиенту теги: "' . $tag->name . '".',
+                'content' => 'Система присвоила клиенту теги: "' . $tagNamesString . '".',
                 'status' => 'sent',
                 'metadata' => [
                     'system_action' => 'tag_added',
-                    'tag_id' => $tag->id,
-                    'tag_name' => $tag->name,
+                    'tag_ids' => $tagIdsToAdd,
+                    'tag_names' => $tagNames,
                     'sent_by' => 'automation',
                 ],
             ]);

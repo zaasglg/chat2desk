@@ -11,8 +11,9 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import AppLayout from '@/layouts/app-layout';
-import { type BreadcrumbItem, type Channel, type Tag, type Automation } from '@/types';
+import { type BreadcrumbItem, type Channel, type Tag, type Automation, type User } from '@/types';
 import { Head, router } from '@inertiajs/react';
 import { FileUpload } from '@/components/FileUpload';
 import {
@@ -25,7 +26,7 @@ import {
     Save,
     Tag as TagIcon,
     Trash2,
-    User,
+    User as UserIcon,
     Video,
     XCircle,
     GitBranch,
@@ -37,6 +38,7 @@ interface Props {
     automation: Automation;
     channels: Channel[];
     tags: Tag[];
+    operators: User[];
 }
 
 type StepType = 'send_text' | 'send_image' | 'send_video' | 'send_file' | 'delay' | 'condition' | 'assign_operator' | 'add_tag' | 'remove_tag' | 'close_chat';
@@ -48,8 +50,10 @@ interface StepConfig {
     delay_seconds?: number;
     condition_type?: string;
     condition_value?: string;
-    tag_id?: number;
-    tag_name?: string;
+    tag_id?: number; // Backward compatibility
+    tag_name?: string; // Backward compatibility
+    tag_ids?: number[]; // Multiple tags
+    operator_id?: number;
 }
 
 interface Step {
@@ -67,11 +71,11 @@ const stepTypes: { type: StepType; label: string; icon: React.ReactNode; color: 
     { type: 'condition', label: 'Условие', icon: <GitBranch className="h-4 w-4" />, color: '#ec4899' },
     { type: 'add_tag', label: 'Добавить тег', icon: <TagIcon className="h-4 w-4" />, color: '#14b8a6' },
     { type: 'remove_tag', label: 'Удалить тег', icon: <TagIcon className="h-4 w-4" />, color: '#ef4444' },
-    { type: 'assign_operator', label: 'Назначить оператора', icon: <User className="h-4 w-4" />, color: '#f97316' },
+    { type: 'assign_operator', label: 'Назначить оператора', icon: <UserIcon className="h-4 w-4" />, color: '#f97316' },
     { type: 'close_chat', label: 'Закрыть чат', icon: <XCircle className="h-4 w-4" />, color: '#ef4444' },
 ];
 
-export default function AutomationsEdit({ automation, channels, tags }: Props) {
+export default function AutomationsEdit({ automation, channels, tags, operators }: Props) {
     // Initialize state from existing automation
     const [name, setName] = useState(automation.name);
     const [description, setDescription] = useState(automation.description || '');
@@ -114,9 +118,15 @@ export default function AutomationsEdit({ automation, channels, tags }: Props) {
     const updateStepConfig = (stepId: string, key: string, value: unknown) => {
         setSteps(steps.map(step => {
             if (step.id === stepId) {
+                const newConfig = { ...step.config };
+                if (value === undefined || value === null) {
+                    delete newConfig[key as keyof typeof newConfig];
+                } else {
+                    (newConfig as Record<string, unknown>)[key] = value;
+                }
                 return {
                     ...step,
-                    config: { ...step.config, [key]: value },
+                    config: newConfig,
                 };
             }
             return step;
@@ -126,9 +136,18 @@ export default function AutomationsEdit({ automation, channels, tags }: Props) {
     const updateStepConfigMultiple = (stepId: string, updates: Record<string, unknown>) => {
         setSteps(steps.map(step => {
             if (step.id === stepId) {
+                const newConfig = { ...step.config };
+                Object.keys(updates).forEach(key => {
+                    const value = updates[key];
+                    if (value === undefined || value === null) {
+                        delete newConfig[key as keyof typeof newConfig];
+                    } else {
+                        (newConfig as Record<string, unknown>)[key] = value;
+                    }
+                });
                 return {
                     ...step,
-                    config: { ...step.config, ...updates },
+                    config: newConfig,
                 };
             }
             return step;
@@ -433,7 +452,26 @@ export default function AutomationsEdit({ automation, channels, tags }: Props) {
                                                     )}
                                                     {step.type === 'add_tag' && (
                                                         <p className="text-sm text-muted-foreground">
-                                                            {step.config.tag_name || 'Выберите тег...'}
+                                                            {(() => {
+                                                                const tagIds = step.config.tag_ids || [];
+                                                                const tagId = step.config.tag_id; // Backward compatibility
+                                                                const tagName = step.config.tag_name; // Backward compatibility
+                                                                
+                                                                if (tagIds.length > 0) {
+                                                                    const selectedTags = tagIds
+                                                                        .map(id => tags.find(t => t.id === id)?.name)
+                                                                        .filter(Boolean);
+                                                                    return selectedTags.length > 0 
+                                                                        ? selectedTags.join(', ') 
+                                                                        : 'Выберите теги...';
+                                                                } else if (tagId) {
+                                                                    const tag = tags.find(t => t.id === tagId);
+                                                                    return tag?.name || 'Выберите теги...';
+                                                                } else if (tagName) {
+                                                                    return tagName;
+                                                                }
+                                                                return 'Выберите теги...';
+                                                            })()}
                                                         </p>
                                                     )}
                                                     {step.type === 'remove_tag' && (
@@ -456,7 +494,11 @@ export default function AutomationsEdit({ automation, channels, tags }: Props) {
                                                         <p className="text-sm text-muted-foreground">Закрывает чат</p>
                                                     )}
                                                     {step.type === 'assign_operator' && (
-                                                        <p className="text-sm text-muted-foreground">Назначает оператора</p>
+                                                        <p className="text-sm text-muted-foreground">
+                                                            {step.config.operator_id 
+                                                                ? operators.find(op => op.id === step.config.operator_id)?.name || 'Оператор не выбран'
+                                                                : 'Выберите оператора...'}
+                                                        </p>
                                                     )}
                                                 </CardContent>
                                             </Card>
@@ -620,32 +662,91 @@ export default function AutomationsEdit({ automation, channels, tags }: Props) {
 
                                     {selectedStep.type === 'add_tag' && (
                                         <div>
-                                            <Label>Тег</Label>
-                                            <Select
-                                                value={selectedStep.config.tag_id?.toString() || ''}
-                                                onValueChange={(v) => {
-                                                    const tag = tags.find(t => t.id.toString() === v);
-                                                    updateStepConfig(selectedStep.id, 'tag_id', parseInt(v));
-                                                    updateStepConfig(selectedStep.id, 'tag_name', tag?.name || '');
-                                                }}
-                                            >
-                                                <SelectTrigger className="mt-1">
-                                                    <SelectValue placeholder="Выберите тег" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {tags.map((tag) => (
-                                                        <SelectItem key={tag.id} value={tag.id.toString()}>
-                                                            <div className="flex items-center gap-2">
-                                                                <div
-                                                                    className="w-3 h-3 rounded-full"
-                                                                    style={{ backgroundColor: tag.color }}
+                                            <Label>Теги</Label>
+                                            <div className="mt-2 space-y-2 max-h-64 overflow-y-auto border rounded-md p-3">
+                                                {tags.length === 0 ? (
+                                                    <p className="text-sm text-muted-foreground text-center py-2">
+                                                        Нет доступных тегов
+                                                    </p>
+                                                ) : (
+                                                    tags.map((tag) => {
+                                                        const tagIds = selectedStep.config.tag_ids || [];
+                                                        const tagId = selectedStep.config.tag_id; // Backward compatibility
+                                                        const isSelected = tagIds.includes(tag.id) || tagId === tag.id;
+                                                        
+                                                        return (
+                                                            <label
+                                                                key={tag.id}
+                                                                className="flex items-center gap-2 p-2 rounded hover:bg-accent cursor-pointer"
+                                                            >
+                                                                <Checkbox
+                                                                    checked={isSelected}
+                                                                    onCheckedChange={(checked) => {
+                                                                        // Handle boolean or "indeterminate" from Radix UI
+                                                                        if (checked === "indeterminate") return;
+                                                                        
+                                                                        setSteps(prevSteps => prevSteps.map(step => {
+                                                                            if (step.id === selectedStep.id) {
+                                                                                const currentTagIds = step.config.tag_ids || [];
+                                                                                const stepTagId = step.config.tag_id; // Backward compatibility
+                                                                                
+                                                                                // Migrate from old single tag_id to array
+                                                                                const allTagIds = stepTagId && !currentTagIds.length 
+                                                                                    ? [stepTagId] 
+                                                                                    : currentTagIds;
+                                                                                
+                                                                                let newTagIds: number[];
+                                                                                if (checked === true) {
+                                                                                    // Avoid duplicates
+                                                                                    if (!allTagIds.includes(tag.id)) {
+                                                                                        newTagIds = [...allTagIds, tag.id];
+                                                                                    } else {
+                                                                                        newTagIds = allTagIds;
+                                                                                    }
+                                                                                } else {
+                                                                                    newTagIds = allTagIds.filter(id => id !== tag.id);
+                                                                                }
+                                                                                
+                                                                                const newConfig = { ...step.config };
+                                                                                newConfig.tag_ids = newTagIds;
+                                                                                
+                                                                                // Clear old single tag fields when using new array format
+                                                                                if (newTagIds.length > 0) {
+                                                                                    delete newConfig.tag_id;
+                                                                                    delete newConfig.tag_name;
+                                                                                }
+                                                                                
+                                                                                return {
+                                                                                    ...step,
+                                                                                    config: newConfig,
+                                                                                };
+                                                                            }
+                                                                            return step;
+                                                                        }));
+                                                                    }}
                                                                 />
-                                                                {tag.name}
-                                                            </div>
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
+                                                                <div className="flex items-center gap-2 flex-1">
+                                                                    <div
+                                                                        className="w-3 h-3 rounded-full"
+                                                                        style={{ backgroundColor: tag.color }}
+                                                                    />
+                                                                    <span className="text-sm">{tag.name}</span>
+                                                                </div>
+                                                            </label>
+                                                        );
+                                                    })
+                                                )}
+                                            </div>
+                                            {(() => {
+                                                const tagIds = selectedStep.config.tag_ids || [];
+                                                const tagId = selectedStep.config.tag_id;
+                                                const selectedCount = tagIds.length || (tagId ? 1 : 0);
+                                                return selectedCount > 0 && (
+                                                    <p className="text-xs text-muted-foreground mt-2">
+                                                        Выбрано тегов: {selectedCount}
+                                                    </p>
+                                                );
+                                            })()}
                                         </div>
                                     )}
 
@@ -745,6 +846,29 @@ export default function AutomationsEdit({ automation, channels, tags }: Props) {
                                                 </div>
                                             )}
                                         </>
+                                    )}
+
+                                    {selectedStep.type === 'assign_operator' && (
+                                        <div>
+                                            <Label>Оператор</Label>
+                                            <Select
+                                                value={selectedStep.config.operator_id?.toString() || ''}
+                                                onValueChange={(v) => {
+                                                    updateStepConfig(selectedStep.id, 'operator_id', v ? parseInt(v) : null);
+                                                }}
+                                            >
+                                                <SelectTrigger className="mt-1">
+                                                    <SelectValue placeholder="Выберите оператора" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {operators.map((operator) => (
+                                                        <SelectItem key={operator.id} value={operator.id.toString()}>
+                                                            {operator.name} {operator.email ? `(${operator.email})` : ''}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
                                     )}
 
                                     <div className="flex gap-2 pt-4">

@@ -27,10 +27,12 @@ class AutomationController extends Controller
     {
         $channels = Channel::where('is_active', true)->get();
         $tags = Tag::orderBy('name')->get();
+        $operators = \App\Models\User::orderBy('name')->get(['id', 'name', 'email']);
 
         return Inertia::render('automations/create', [
             'channels' => $channels,
             'tags' => $tags,
+            'operators' => $operators,
         ]);
     }
 
@@ -84,11 +86,13 @@ class AutomationController extends Controller
         $automation->load('steps');
         $channels = Channel::where('is_active', true)->get();
         $tags = Tag::orderBy('name')->get();
+        $operators = \App\Models\User::orderBy('name')->get(['id', 'name', 'email']);
 
         return Inertia::render('automations/edit', [
             'automation' => $automation,
             'channels' => $channels,
             'tags' => $tags,
+            'operators' => $operators,
         ]);
     }
 
