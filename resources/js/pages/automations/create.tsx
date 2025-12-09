@@ -53,7 +53,16 @@ interface StepConfig {
     tag_name?: string; // Backward compatibility
     tag_ids?: number[]; // Multiple tags
     operator_id?: number;
-    buttons?: Array<{ text: string; url?: string; callback_data?: string; step_id?: string }>; // Для инлайн кнопок
+    buttons?: Array<{ 
+        text: string; 
+        url?: string; 
+        action?: 'send_photo' | 'send_video' | 'send_file' | 'send_text' | 'add_tag' | 'remove_tag';
+        action_config?: {
+            url?: string;
+            text?: string;
+            tag_ids?: number[];
+        };
+    }>; // Для инлайн кнопок
 }
 
 interface Step {
@@ -191,14 +200,41 @@ export default function AutomationsCreate({ channels, tags, operators }: Props) 
                 let cleanedConfig = { ...step.config };
                 if (step.type === 'send_text_with_buttons' && cleanedConfig.buttons) {
                     cleanedConfig.buttons = cleanedConfig.buttons
-                        .filter((btn: any) => btn.text && (btn.url || btn.callback_data))
+                        .filter((btn: any) => {
+                            // Фильтруем кнопки без текста
+                            if (!btn.text) return false;
+                            
+                            // Если есть URL, кнопка валидна
+                            if (btn.url) return true;
+                            
+                            // Если есть action, проверяем наличие необходимых данных в action_config
+                            if (btn.action && btn.action_config) {
+                                const config = btn.action_config;
+                                switch (btn.action) {
+                                    case 'send_photo':
+                                    case 'send_video':
+                                    case 'send_file':
+                                        return !!(config.url);
+                                    case 'send_text':
+                                        return !!(config.text);
+                                    case 'add_tag':
+                                    case 'remove_tag':
+                                        return !!(config.tag_ids && config.tag_ids.length > 0);
+                                    default:
+                                        return false;
+                                }
+                            }
+                            
+                            return false;
+                        })
                         .map((btn: any) => {
                             const cleanedBtn: any = { text: btn.text };
                             if (btn.url) {
                                 cleanedBtn.url = btn.url;
                             }
-                            if (btn.callback_data) {
-                                cleanedBtn.callback_data = btn.callback_data;
+                            if (btn.action && btn.action_config) {
+                                cleanedBtn.action = btn.action;
+                                cleanedBtn.action_config = btn.action_config;
                             }
                             return cleanedBtn;
                         });
@@ -648,15 +684,20 @@ export default function AutomationsCreate({ channels, tags, operators }: Props) 
                                                             <div>
                                                                 <Label className="text-xs">Тип кнопки</Label>
                                                                 <Select
-                                                                    value={button.url !== undefined ? 'url' : (button.callback_data !== undefined ? 'callback' : 'url')}
+                                                                    value={button.url !== undefined ? 'url' : (button.action || 'url')}
                                                                     onValueChange={(value) => {
                                                                         const currentButtons = selectedStep.config.buttons || [];
                                                                         const newButtons = [...currentButtons];
                                                                         if (value === 'url') {
                                                                             newButtons[index] = { text: newButtons[index].text, url: '' };
-                                                                            delete newButtons[index].callback_data;
+                                                                            delete newButtons[index].action;
+                                                                            delete newButtons[index].action_config;
                                                                         } else {
-                                                                            newButtons[index] = { text: newButtons[index].text, callback_data: '' };
+                                                                            newButtons[index] = { 
+                                                                                text: newButtons[index].text, 
+                                                                                action: value as any,
+                                                                                action_config: {}
+                                                                            };
                                                                             delete newButtons[index].url;
                                                                         }
                                                                         updateStepConfig(selectedStep.id, 'buttons', newButtons);
@@ -667,7 +708,12 @@ export default function AutomationsCreate({ channels, tags, operators }: Props) 
                                                                     </SelectTrigger>
                                                                     <SelectContent>
                                                                         <SelectItem value="url">URL (ссылка)</SelectItem>
-                                                                        <SelectItem value="callback">Callback (данные)</SelectItem>
+                                                                        <SelectItem value="send_photo">Отправить фото</SelectItem>
+                                                                        <SelectItem value="send_video">Отправить видео</SelectItem>
+                                                                        <SelectItem value="send_file">Отправить файл</SelectItem>
+                                                                        <SelectItem value="send_text">Отправить текст</SelectItem>
+                                                                        <SelectItem value="add_tag">Добавить теги</SelectItem>
+                                                                        <SelectItem value="remove_tag">Удалить теги</SelectItem>
                                                                     </SelectContent>
                                                                 </Select>
                                                             </div>
@@ -687,61 +733,117 @@ export default function AutomationsCreate({ channels, tags, operators }: Props) 
                                                                     />
                                                                 </div>
                                                             )}
-                                                            {button.callback_data !== undefined && (
-                                                                <div className="space-y-2">
-                                                                    <div>
-                                                                        <Label className="text-xs">Выберите шаг для выполнения</Label>
-                                                                        <Select
-                                                                            value={button.step_id || (button.callback_data?.startsWith('step_') ? button.callback_data.replace('step_', '') : '') || ''}
-                                                                            onValueChange={(value) => {
-                                                                                const currentButtons = selectedStep.config.buttons || [];
-                                                                                const newButtons = [...currentButtons];
-                                                                                newButtons[index] = { 
-                                                                                    ...newButtons[index], 
-                                                                                    step_id: value || undefined,
-                                                                                    callback_data: value ? `step_${value}` : ''
-                                                                                };
-                                                                                updateStepConfig(selectedStep.id, 'buttons', newButtons);
-                                                                            }}
-                                                                        >
-                                                                            <SelectTrigger className="mt-1">
-                                                                                <SelectValue placeholder="Выберите шаг" />
-                                                                            </SelectTrigger>
-                                                                            <SelectContent>
-                                                                                {steps
-                                                                                    .filter(s => s.id !== selectedStep.id)
-                                                                                    .map((step) => {
-                                                                                        const stepType = stepTypes.find(st => st.type === step.type);
-                                                                                        return (
-                                                                                            <SelectItem key={step.id} value={step.id}>
-                                                                                                <div className="flex items-center gap-2">
-                                                                                                    {stepType?.icon && (
-                                                                                                        <div
-                                                                                                            className="p-0.5 rounded text-white text-xs"
-                                                                                                            style={{ backgroundColor: stepType.color }}
-                                                                                                        >
-                                                                                                            {stepType.icon}
-                                                                                                        </div>
-                                                                                                    )}
-                                                                                                    <span>Шаг {steps.findIndex(s => s.id === step.id) + 1}: {stepType?.label || step.type}</span>
-                                                                                                </div>
-                                                                                            </SelectItem>
-                                                                                        );
-                                                                                    })}
-                                                                            </SelectContent>
-                                                                        </Select>
-                                                                    </div>
-                                                                    <div>
-                                                                        <Label className="text-xs">Callback Data (автоматически)</Label>
-                                                                        <Input
-                                                                            className="mt-1"
-                                                                            placeholder="callback_data"
-                                                                            value={button.callback_data || ''}
-                                                                            disabled
-                                                                        />
-                                                                        <p className="text-xs text-muted-foreground mt-1">
-                                                                            Автоматически генерируется на основе выбранного шага
-                                                                        </p>
+                                                            {button.action === 'send_photo' && (
+                                                                <div>
+                                                                    <Label className="text-xs">URL изображения</Label>
+                                                                    <Input
+                                                                        className="mt-1"
+                                                                        placeholder="https://example.com/image.jpg"
+                                                                        value={button.action_config?.url || ''}
+                                                                        onChange={(e) => {
+                                                                            const currentButtons = selectedStep.config.buttons || [];
+                                                                            const newButtons = [...currentButtons];
+                                                                            newButtons[index] = { 
+                                                                                ...newButtons[index], 
+                                                                                action_config: { ...newButtons[index].action_config, url: e.target.value }
+                                                                            };
+                                                                            updateStepConfig(selectedStep.id, 'buttons', newButtons);
+                                                                        }}
+                                                                    />
+                                                                </div>
+                                                            )}
+                                                            {button.action === 'send_video' && (
+                                                                <div>
+                                                                    <Label className="text-xs">URL видео</Label>
+                                                                    <Input
+                                                                        className="mt-1"
+                                                                        placeholder="https://example.com/video.mp4"
+                                                                        value={button.action_config?.url || ''}
+                                                                        onChange={(e) => {
+                                                                            const currentButtons = selectedStep.config.buttons || [];
+                                                                            const newButtons = [...currentButtons];
+                                                                            newButtons[index] = { 
+                                                                                ...newButtons[index], 
+                                                                                action_config: { ...newButtons[index].action_config, url: e.target.value }
+                                                                            };
+                                                                            updateStepConfig(selectedStep.id, 'buttons', newButtons);
+                                                                        }}
+                                                                    />
+                                                                </div>
+                                                            )}
+                                                            {button.action === 'send_file' && (
+                                                                <div>
+                                                                    <Label className="text-xs">URL файла</Label>
+                                                                    <Input
+                                                                        className="mt-1"
+                                                                        placeholder="https://example.com/file.pdf"
+                                                                        value={button.action_config?.url || ''}
+                                                                        onChange={(e) => {
+                                                                            const currentButtons = selectedStep.config.buttons || [];
+                                                                            const newButtons = [...currentButtons];
+                                                                            newButtons[index] = { 
+                                                                                ...newButtons[index], 
+                                                                                action_config: { ...newButtons[index].action_config, url: e.target.value }
+                                                                            };
+                                                                            updateStepConfig(selectedStep.id, 'buttons', newButtons);
+                                                                        }}
+                                                                    />
+                                                                </div>
+                                                            )}
+                                                            {button.action === 'send_text' && (
+                                                                <div>
+                                                                    <Label className="text-xs">Текст сообщения</Label>
+                                                                    <Textarea
+                                                                        className="mt-1"
+                                                                        placeholder="Введите текст сообщения"
+                                                                        value={button.action_config?.text || ''}
+                                                                        onChange={(e) => {
+                                                                            const currentButtons = selectedStep.config.buttons || [];
+                                                                            const newButtons = [...currentButtons];
+                                                                            newButtons[index] = { 
+                                                                                ...newButtons[index], 
+                                                                                action_config: { ...newButtons[index].action_config, text: e.target.value }
+                                                                            };
+                                                                            updateStepConfig(selectedStep.id, 'buttons', newButtons);
+                                                                        }}
+                                                                    />
+                                                                </div>
+                                                            )}
+                                                            {(button.action === 'add_tag' || button.action === 'remove_tag') && (
+                                                                <div>
+                                                                    <Label className="text-xs">Выберите теги</Label>
+                                                                    <div className="mt-1 space-y-2 max-h-32 overflow-y-auto border rounded p-2">
+                                                                        {tags.map((tag) => {
+                                                                            const isSelected = button.action_config?.tag_ids?.includes(tag.id);
+                                                                            return (
+                                                                                <div key={tag.id} className="flex items-center space-x-2">
+                                                                                    <Checkbox
+                                                                                        checked={isSelected}
+                                                                                        onCheckedChange={(checked) => {
+                                                                                            const currentButtons = selectedStep.config.buttons || [];
+                                                                                            const newButtons = [...currentButtons];
+                                                                                            const currentTagIds = newButtons[index].action_config?.tag_ids || [];
+                                                                                            const newTagIds = checked
+                                                                                                ? [...currentTagIds, tag.id]
+                                                                                                : currentTagIds.filter((id: number) => id !== tag.id);
+                                                                                            newButtons[index] = { 
+                                                                                                ...newButtons[index], 
+                                                                                                action_config: { ...newButtons[index].action_config, tag_ids: newTagIds }
+                                                                                            };
+                                                                                            updateStepConfig(selectedStep.id, 'buttons', newButtons);
+                                                                                        }}
+                                                                                    />
+                                                                                    <Label className="text-sm cursor-pointer">
+                                                                                        <span
+                                                                                            className="inline-block px-2 py-1 rounded text-xs"
+                                                                                            style={{ backgroundColor: tag.color + '20', color: tag.color }}
+                                                                                        >
+                                                                                            {tag.name}
+                                                                                        </span>
+                                                                                    </Label>
+                                                                                </div>
+                                                                            );
+                                                                        })}
                                                                     </div>
                                                                 </div>
                                                             )}

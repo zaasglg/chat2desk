@@ -28,12 +28,21 @@ class TelegramWebhookController extends Controller
         }
 
         $update = $request->all();
-        Log::info('Telegram webhook received', ['channel' => $channel->id, 'update' => $update]);
+        Log::info('Telegram webhook received', [
+            'channel' => $channel->id, 
+            'update_type' => array_keys($update),
+            'has_callback_query' => isset($update['callback_query']),
+            'has_message' => isset($update['message']),
+            'update' => $update
+        ]);
 
         $telegramService = app(\App\Services\TelegramService::class);
 
         // Handle callback query (button click)
         if (isset($update['callback_query'])) {
+            Log::info('Processing callback_query in webhook controller', [
+                'callback_query' => $update['callback_query']
+            ]);
             $telegramService->handleCallbackQuery($channel, $update['callback_query']);
         }
 

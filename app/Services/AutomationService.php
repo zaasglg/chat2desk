@@ -174,7 +174,7 @@ class AutomationService
                 break;
 
             case 'send_text_with_buttons':
-                $this->executeStepSendTextWithButtons($chat, $config);
+                $this->executeStepSendTextWithButtons($chat, $config, $step);
                 break;
 
             case 'send_image':
@@ -273,7 +273,7 @@ class AutomationService
     /**
      * Send text message with inline buttons (optionally with image)
      */
-    protected function executeStepSendTextWithButtons(Chat $chat, array $config): void
+    protected function executeStepSendTextWithButtons(Chat $chat, array $config, AutomationStep $step): void
     {
         $text = $config['text'] ?? '';
         $buttons = $config['buttons'] ?? [];
@@ -296,23 +296,38 @@ class AutomationService
         // Build inline keyboard from buttons config
         $inlineKeyboard = [];
         if (!empty($buttons)) {
-            foreach ($buttons as $button) {
+            foreach ($buttons as $buttonIndex => $button) {
                 if (empty($button['text'])) {
                     continue; // Skip buttons without text
                 }
 
                 $buttonData = ['text' => $button['text']];
                 
-                // Add URL or callback_data
+                // Add URL or callback_data for action buttons
                 if (!empty($button['url'])) {
                     $buttonData['url'] = $button['url'];
-                } elseif (!empty($button['callback_data'])) {
-                    // Если есть step_id, используем его для callback_data, иначе используем указанный callback_data
-                    if (!empty($button['step_id'])) {
-                        $buttonData['callback_data'] = 'step_' . $button['step_id'];
-                    } else {
-                        $buttonData['callback_data'] = $button['callback_data'];
+                } elseif (!empty($button['action'])) {
+                    // Use short format: step_id + button_index
+                    // Telegram limits callback_data to 64 bytes
+                    // step_id format is usually like "step-1234567890" (max ~20 chars)
+                    // button_index is 1-2 digits
+                    // So format: {step_id}:{button_index} fits well
+                    $stepId = $step->step_id ?? '';
+                    $callbackData = $stepId . ':' . $buttonIndex;
+                    
+                    // If step_id is too long, use a hash
+                    if (strlen($callbackData) > 60) {
+                        // Use shorter format: hash of step_id + button_index
+                        $hash = substr(md5($stepId . '_' . $buttonIndex), 0, 16);
+                        $callbackData = 'b' . $hash . '_' . $buttonIndex;
                     }
+                    
+                    // Ensure it's within 64 bytes
+                    if (strlen($callbackData) > 64) {
+                        $callbackData = substr($callbackData, 0, 64);
+                    }
+                    
+                    $buttonData['callback_data'] = $callbackData;
                 } else {
                     continue; // Skip buttons without action
                 }

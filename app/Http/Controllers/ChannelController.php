@@ -108,6 +108,22 @@ class ChannelController extends Controller
                     $this->deleteTelegramWebhook($currentToken);
                 }
                 $this->setTelegramWebhook($request->bot_token, $webhookToken);
+            } else {
+                // Token not changed, but we should reinstall webhook to include callback_query
+                $currentCredentials = $channel->credentials ?? [];
+                $currentToken = $currentCredentials['bot_token'] ?? null;
+                $currentWebhookToken = $currentCredentials['webhook_token'] ?? null;
+                if ($currentToken && $currentWebhookToken) {
+                    $this->setTelegramWebhook($currentToken, $currentWebhookToken);
+                }
+            }
+        } else {
+            // No token in request, but we should reinstall webhook to include callback_query
+            $currentCredentials = $channel->credentials ?? [];
+            $currentToken = $currentCredentials['bot_token'] ?? null;
+            $currentWebhookToken = $currentCredentials['webhook_token'] ?? null;
+            if ($currentToken && $currentWebhookToken) {
+                $this->setTelegramWebhook($currentToken, $currentWebhookToken);
             }
         }
 
@@ -144,7 +160,7 @@ class ChannelController extends Controller
 
         $response = Http::post("https://api.telegram.org/bot{$botToken}/setWebhook", [
             'url' => $webhookUrl,
-            'allowed_updates' => ['message', 'edited_message'],
+            'allowed_updates' => ['message', 'edited_message', 'callback_query'],
         ]);
 
         return $response->successful() && $response->json('ok');

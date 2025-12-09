@@ -69,6 +69,8 @@ class AutomationController extends Controller
                 // Обрабатываем кнопки для send_text_with_buttons
                 $config = $stepData['config'] ?? null;
                 if ($stepData['type'] === 'send_text_with_buttons' && isset($config['buttons']) && is_array($config['buttons'])) {
+                    \Log::info('Processing buttons for send_text_with_buttons', ['original_buttons' => $config['buttons']]);
+                    
                     // Очищаем и нормализуем кнопки
                     $processedButtons = [];
                     foreach ($config['buttons'] as $button) {
@@ -78,11 +80,38 @@ class AutomationController extends Controller
                         
                         $processedButton = ['text' => $button['text']];
                         
-                        // Добавляем только заполненные поля (url или callback_data)
+                        // Добавляем URL или action с action_config
                         if (isset($button['url']) && $button['url'] !== '' && $button['url'] !== null) {
                             $processedButton['url'] = $button['url'];
-                        } elseif (isset($button['callback_data']) && $button['callback_data'] !== '' && $button['callback_data'] !== null) {
-                            $processedButton['callback_data'] = $button['callback_data'];
+                        } elseif (isset($button['action']) && !empty($button['action'])) {
+                            $action = $button['action'];
+                            $actionConfig = $button['action_config'] ?? [];
+                            
+                            // Проверяем наличие необходимых данных для каждого типа действия
+                            $hasValidConfig = false;
+                            switch ($action) {
+                                case 'send_photo':
+                                case 'send_video':
+                                case 'send_file':
+                                    $hasValidConfig = !empty($actionConfig['url']);
+                                    break;
+                                case 'send_text':
+                                    $hasValidConfig = !empty($actionConfig['text']);
+                                    break;
+                                case 'add_tag':
+                                case 'remove_tag':
+                                    $hasValidConfig = !empty($actionConfig['tag_ids']) && is_array($actionConfig['tag_ids']);
+                                    break;
+                                default:
+                                    $hasValidConfig = false;
+                            }
+                            
+                            if ($hasValidConfig) {
+                                $processedButton['action'] = $action;
+                                $processedButton['action_config'] = $actionConfig;
+                            } else {
+                                continue; // Пропускаем кнопки с невалидной конфигурацией
+                            }
                         } else {
                             continue; // Пропускаем кнопки без действия
                         }
@@ -91,6 +120,7 @@ class AutomationController extends Controller
                     }
                     
                     $config['buttons'] = $processedButtons;
+                    \Log::info('Cleaned buttons for send_text_with_buttons', ['cleaned_buttons' => $config['buttons']]);
                 }
                 
                 AutomationStep::create([
@@ -168,6 +198,8 @@ class AutomationController extends Controller
                 // Обрабатываем кнопки для send_text_with_buttons
                 $config = $stepData['config'] ?? null;
                 if ($stepData['type'] === 'send_text_with_buttons' && isset($config['buttons']) && is_array($config['buttons'])) {
+                    \Log::info('Processing buttons for send_text_with_buttons', ['original_buttons' => $config['buttons']]);
+                    
                     // Очищаем и нормализуем кнопки
                     $processedButtons = [];
                     foreach ($config['buttons'] as $button) {
@@ -177,11 +209,38 @@ class AutomationController extends Controller
                         
                         $processedButton = ['text' => $button['text']];
                         
-                        // Добавляем только заполненные поля (url или callback_data)
+                        // Добавляем URL или action с action_config
                         if (isset($button['url']) && $button['url'] !== '' && $button['url'] !== null) {
                             $processedButton['url'] = $button['url'];
-                        } elseif (isset($button['callback_data']) && $button['callback_data'] !== '' && $button['callback_data'] !== null) {
-                            $processedButton['callback_data'] = $button['callback_data'];
+                        } elseif (isset($button['action']) && !empty($button['action'])) {
+                            $action = $button['action'];
+                            $actionConfig = $button['action_config'] ?? [];
+                            
+                            // Проверяем наличие необходимых данных для каждого типа действия
+                            $hasValidConfig = false;
+                            switch ($action) {
+                                case 'send_photo':
+                                case 'send_video':
+                                case 'send_file':
+                                    $hasValidConfig = !empty($actionConfig['url']);
+                                    break;
+                                case 'send_text':
+                                    $hasValidConfig = !empty($actionConfig['text']);
+                                    break;
+                                case 'add_tag':
+                                case 'remove_tag':
+                                    $hasValidConfig = !empty($actionConfig['tag_ids']) && is_array($actionConfig['tag_ids']);
+                                    break;
+                                default:
+                                    $hasValidConfig = false;
+                            }
+                            
+                            if ($hasValidConfig) {
+                                $processedButton['action'] = $action;
+                                $processedButton['action_config'] = $actionConfig;
+                            } else {
+                                continue; // Пропускаем кнопки с невалидной конфигурацией
+                            }
                         } else {
                             continue; // Пропускаем кнопки без действия
                         }
@@ -190,6 +249,7 @@ class AutomationController extends Controller
                     }
                     
                     $config['buttons'] = $processedButtons;
+                    \Log::info('Cleaned buttons for send_text_with_buttons', ['cleaned_buttons' => $config['buttons']]);
                 }
                 
                 AutomationStep::create([

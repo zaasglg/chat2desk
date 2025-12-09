@@ -688,8 +688,14 @@ class TelegramService
      */
     public function handleCallbackQuery(Channel $channel, array $callbackQuery): void
     {
+        Log::info('Callback query received', [
+            'channel_id' => $channel->id,
+            'callback_query' => $callbackQuery,
+        ]);
+        
         $telegramUser = $callbackQuery['from'] ?? null;
         if (!$telegramUser) {
+            Log::warning('No telegram user in callback query', ['callback_query' => $callbackQuery]);
             return;
         }
 
@@ -698,6 +704,10 @@ class TelegramService
         $chatId = $message['chat']['id'] ?? null;
 
         if (!$chatId || !$callbackData) {
+            Log::warning('Missing chat_id or callback_data', [
+                'chat_id' => $chatId,
+                'callback_data' => $callbackData,
+            ]);
             return;
         }
 
@@ -740,13 +750,46 @@ class TelegramService
             $chat->update(['metadata' => $metadata]);
         }
 
-        // Answer callback query to remove loading state
-        $this->answerCallbackQuery($channel, $callbackQuery['id']);
-
-        // If callback_data starts with "step_", it's a step trigger
-        if (str_starts_with($callbackData, 'step_')) {
-            $stepId = str_replace('step_', '', $callbackData);
-            $this->executeStepFromCallback($chat, $stepId, $channel);
+        // Check if callback_data is a button action (format: step_id:button_index or b{hash}_{index})
+        try {
+            if (str_contains($callbackData, ':') || (str_starts_with($callbackData, 'b') && str_contains($callbackData, '_'))) {
+                Log::info('Processing button action from callback', ['callback_data' => $callbackData]);
+                $this->executeButtonActionFromCallback($chat, $callbackData, $channel);
+                // Answer callback query after successful execution
+                $this->answerCallbackQuery($channel, $callbackQuery['id']);
+            } elseif (str_starts_with($callbackData, 'action_')) {
+                // Legacy format (for backwards compatibility)
+                Log::info('Processing legacy button action', ['callback_data' => $callbackData]);
+                $encodedData = str_replace('action_', '', $callbackData);
+                try {
+                    $actionData = json_decode(base64_decode($encodedData), true);
+                    if ($actionData && isset($actionData['action'])) {
+                        $this->executeButtonAction($chat, $actionData['action'], $actionData['config'] ?? [], $channel);
+                        // Answer callback query after successful execution
+                        $this->answerCallbackQuery($channel, $callbackQuery['id']);
+                    } else {
+                        Log::warning('Invalid action data', ['action_data' => $actionData]);
+                        $this->answerCallbackQuery($channel, $callbackQuery['id'], 'Ошибка: неверные данные кнопки');
+                    }
+                } catch (\Exception $e) {
+                    Log::error('Failed to decode button action', [
+                        'error' => $e->getMessage(),
+                        'callback_data' => $callbackData,
+                    ]);
+                    $this->answerCallbackQuery($channel, $callbackQuery['id'], 'Ошибка обработки кнопки');
+                }
+            } else {
+                Log::warning('Unknown callback_data format', ['callback_data' => $callbackData]);
+                $this->answerCallbackQuery($channel, $callbackQuery['id']);
+            }
+        } catch (\Exception $e) {
+            Log::error('Error processing callback query', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'callback_data' => $callbackData,
+            ]);
+            // Always answer callback query, even on error
+            $this->answerCallbackQuery($channel, $callbackQuery['id'], 'Произошла ошибка');
         }
 
         Log::info('Callback query processed', [
@@ -788,41 +831,178 @@ class TelegramService
     }
 
     /**
-     * Execute step from callback button
+     * Execute button action from callback data (format: step_id:button_index)
      */
-    protected function executeStepFromCallback(Chat $chat, string $stepId, Channel $channel): void
+    protected function executeButtonActionFromCallback(Chat $chat, string $callbackData, Channel $channel): void
     {
-        // Find the automation that contains this step
-        $automationStep = \App\Models\AutomationStep::where('step_id', $stepId)
-            ->with('automation')
-            ->first();
-
-        if (!$automationStep || !$automationStep->automation) {
-            Log::warning('Step not found for callback', [
-                'step_id' => $stepId,
-                'chat_id' => $chat->id,
+        Log::info('Executing button action from callback', [
+            'chat_id' => $chat->id,
+            'callback_data' => $callbackData,
+        ]);
+        
+        // Parse callback_data: step_id:button_index or b{hash}_{index}
+        $stepId = '';
+        $buttonIndex = -1;
+        $parts = [];
+        
+        if (str_contains($callbackData, ':')) {
+            $parts = explode(':', $callbackData, 2);
+            $stepId = $parts[0] ?? '';
+            $buttonIndex = isset($parts[1]) ? (int)$parts[1] : -1;
+            Log::info('Parsed callback_data', ['step_id' => $stepId, 'button_index' => $buttonIndex]);
+        } elseif (str_starts_with($callbackData, 'b') && str_contains($callbackData, '_')) {
+            // Hash format - need to find step by matching hash
+            $hashPart = substr($callbackData, 1, strpos($callbackData, '_') - 1);
+            $buttonIndex = (int)substr($callbackData, strpos($callbackData, '_') + 1);
+            // Find step by searching all automation steps (less efficient, but fallback)
+            // For SQLite compatibility, we'll search differently
+            $automationSteps = \App\Models\AutomationStep::where('type', 'send_text_with_buttons')
+                ->get()
+                ->filter(function($step) {
+                    $config = $step->config ?? [];
+                    return !empty($config['buttons']);
+                });
+            
+            foreach ($automationSteps as $step) {
+                $buttons = $step->config['buttons'] ?? [];
+                foreach ($buttons as $idx => $button) {
+                    $testHash = substr(md5($step->step_id . '_' . $idx), 0, 16);
+                    if ($testHash === $hashPart && $idx === $buttonIndex) {
+                        $stepId = $step->step_id;
+                        break 2;
+                    }
+                }
+            }
+            
+            if (empty($stepId)) {
+                Log::warning('Could not find step by hash', ['callback_data' => $callbackData]);
+                return;
+            }
+        } else {
+            Log::warning('Invalid callback_data format', ['callback_data' => $callbackData]);
+            return;
+        }
+        
+        if (empty($stepId) || $buttonIndex < 0) {
+            Log::warning('Invalid callback_data format', ['callback_data' => $callbackData, 'step_id' => $stepId, 'button_index' => $buttonIndex]);
+            return;
+        }
+        
+        // Find the step
+        $step = \App\Models\AutomationStep::where('step_id', $stepId)->first();
+        if (!$step) {
+            Log::warning('Step not found', ['step_id' => $stepId]);
+            return;
+        }
+        
+        // Get button config from step
+        $buttons = $step->config['buttons'] ?? [];
+        Log::info('Step buttons', ['step_id' => $stepId, 'buttons_count' => count($buttons), 'button_index' => $buttonIndex]);
+        
+        if (!isset($buttons[$buttonIndex])) {
+            Log::warning('Button not found', [
+                'step_id' => $stepId, 
+                'button_index' => $buttonIndex,
+                'available_indices' => array_keys($buttons),
             ]);
             return;
         }
+        
+        $button = $buttons[$buttonIndex];
+        Log::info('Button config', ['button' => $button]);
+        
+        if (empty($button['action']) || empty($button['action_config'])) {
+            Log::warning('Button has no action', ['button' => $button]);
+            return;
+        }
+        
+        // Execute the action
+        Log::info('Executing button action', [
+            'action' => $button['action'],
+            'action_config' => $button['action_config'],
+        ]);
+        $this->executeButtonAction($chat, $button['action'], $button['action_config'], $channel);
+        Log::info('Button action executed successfully');
+    }
 
-        $automation = $automationStep->automation;
-
-        // Check if automation is active
-        if (!$automation->is_active) {
-            Log::info('Automation is not active, skipping step execution', [
-                'automation_id' => $automation->id,
-                'step_id' => $stepId,
-            ]);
+    /**
+     * Execute button action
+     */
+    protected function executeButtonAction(Chat $chat, string $action, array $config, Channel $channel): void
+    {
+        $telegramChatId = $chat->metadata['telegram_chat_id'] ?? null;
+        if (!$telegramChatId) {
+            Log::warning('No telegram_chat_id in chat metadata', ['chat_id' => $chat->id]);
             return;
         }
 
-        // Execute the step using AutomationService
-        $automationService = app(\App\Services\AutomationService::class);
-        $automationService->executeStep($automationStep, $chat);
+        switch ($action) {
+            case 'send_photo':
+                $url = $config['url'] ?? '';
+                if ($url) {
+                    $this->sendPhoto($channel, $telegramChatId, $url, '');
+                }
+                break;
 
-        Log::info('Step executed from callback', [
-            'automation_id' => $automation->id,
-            'step_id' => $stepId,
+            case 'send_video':
+                $url = $config['url'] ?? '';
+                if ($url) {
+                    $this->sendVideo($channel, $telegramChatId, $url, '');
+                }
+                break;
+
+            case 'send_file':
+                $url = $config['url'] ?? '';
+                if ($url) {
+                    $this->sendDocument($channel, $telegramChatId, $url, '');
+                }
+                break;
+
+            case 'send_text':
+                $text = $config['text'] ?? '';
+                if ($text) {
+                    $this->sendMessage($channel, $telegramChatId, $text);
+                }
+                break;
+
+            case 'add_tag':
+                $tagIds = $config['tag_ids'] ?? [];
+                if (!empty($tagIds)) {
+                    $client = $chat->client;
+                    if ($client) {
+                        $client->tags()->syncWithoutDetaching($tagIds);
+                        Log::info('Tags added to client from button', [
+                            'client_id' => $client->id,
+                            'tag_ids' => $tagIds,
+                        ]);
+                    } else {
+                        Log::warning('No client found for chat when adding tags', ['chat_id' => $chat->id]);
+                    }
+                }
+                break;
+
+            case 'remove_tag':
+                $tagIds = $config['tag_ids'] ?? [];
+                if (!empty($tagIds)) {
+                    $client = $chat->client;
+                    if ($client) {
+                        $client->tags()->detach($tagIds);
+                        Log::info('Tags removed from client from button', [
+                            'client_id' => $client->id,
+                            'tag_ids' => $tagIds,
+                        ]);
+                    } else {
+                        Log::warning('No client found for chat when removing tags', ['chat_id' => $chat->id]);
+                    }
+                }
+                break;
+
+            default:
+                Log::warning('Unknown button action', ['action' => $action]);
+        }
+
+        Log::info('Button action executed', [
+            'action' => $action,
             'chat_id' => $chat->id,
         ]);
     }
