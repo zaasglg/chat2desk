@@ -145,9 +145,9 @@ class AutomationService
     }
 
     /**
-     * Execute a single step
+     * Execute a single step (public method for callback execution)
      */
-    protected function executeStep(AutomationStep $step, Chat $chat, AutomationLog $log, ?Message $triggerMessage = null): bool
+    public function executeStep(AutomationStep $step, Chat $chat, ?AutomationLog $log = null, ?Message $triggerMessage = null): bool
     {
         $config = $step->config ?? [];
 
@@ -157,18 +157,24 @@ class AutomationService
             'chat_id' => $chat->id,
         ]);
 
-        // Update log with current step
-        $stepsExecuted = $log->steps_executed ?? [];
-        $stepsExecuted[] = [
-            'step_id' => $step->step_id,
-            'type' => $step->type,
-            'started_at' => now()->toIsoString(),
-        ];
-        $log->update(['steps_executed' => $stepsExecuted]);
+        // Update log with current step (if log exists)
+        if ($log) {
+            $stepsExecuted = $log->steps_executed ?? [];
+            $stepsExecuted[] = [
+                'step_id' => $step->step_id,
+                'type' => $step->type,
+                'started_at' => now()->toIsoString(),
+            ];
+            $log->update(['steps_executed' => $stepsExecuted]);
+        }
 
         switch ($step->type) {
             case 'send_text':
                 $this->executeStepSendText($chat, $config);
+                break;
+
+            case 'send_text_with_buttons':
+                $this->executeStepSendTextWithButtons($chat, $config);
                 break;
 
             case 'send_image':
@@ -205,8 +211,12 @@ class AutomationService
 
             case 'condition':
                 // For conditions, we need to pause automation and wait for next message
-                $this->pauseAutomationForCondition($step, $chat, $log);
-                return false; // Stop current execution
+                if ($log) {
+                    $this->pauseAutomationForCondition($step, $chat, $log);
+                    return false; // Stop current execution
+                }
+                // If no log (callback execution), just continue
+                break;
 
             default:
                 Log::warning('Unknown step type', ['type' => $step->type]);
@@ -255,6 +265,127 @@ class AutomationService
                 'metadata' => [
                     'telegram_message_id' => $result['message_id'] ?? null,
                     'sent_by' => 'automation',
+                ],
+            ]);
+        }
+    }
+
+    /**
+     * Send text message with inline buttons (optionally with image)
+     */
+    protected function executeStepSendTextWithButtons(Chat $chat, array $config): void
+    {
+        $text = $config['text'] ?? '';
+        $buttons = $config['buttons'] ?? [];
+        $imageUrl = $config['url'] ?? '';
+        
+        if (empty($text) && empty($imageUrl)) {
+            return;
+        }
+
+        // Replace variables
+        $text = $this->replaceVariables($text, $chat);
+
+        // Get telegram chat ID from metadata
+        $telegramChatId = $chat->metadata['telegram_chat_id'] ?? null;
+        if (!$telegramChatId) {
+            Log::warning('No telegram_chat_id in chat metadata', ['chat_id' => $chat->id]);
+            return;
+        }
+
+        // Build inline keyboard from buttons config
+        $inlineKeyboard = [];
+        if (!empty($buttons)) {
+            foreach ($buttons as $button) {
+                if (empty($button['text'])) {
+                    continue; // Skip buttons without text
+                }
+
+                $buttonData = ['text' => $button['text']];
+                
+                // Add URL or callback_data
+                if (!empty($button['url'])) {
+                    $buttonData['url'] = $button['url'];
+                } elseif (!empty($button['callback_data'])) {
+                    // Если есть step_id, используем его для callback_data, иначе используем указанный callback_data
+                    if (!empty($button['step_id'])) {
+                        $buttonData['callback_data'] = 'step_' . $button['step_id'];
+                    } else {
+                        $buttonData['callback_data'] = $button['callback_data'];
+                    }
+                } else {
+                    continue; // Skip buttons without action
+                }
+
+                // Each button is in its own row (can be changed to group buttons)
+                $inlineKeyboard[] = [$buttonData];
+            }
+        }
+        
+        Log::info('Inline keyboard built', [
+            'chat_id' => $chat->id,
+            'buttons_count' => count($buttons),
+            'inline_keyboard' => $inlineKeyboard,
+        ]);
+
+        $result = null;
+        $messageType = 'text';
+        $attachments = null;
+
+        // If image is provided, send photo with caption and buttons
+        if (!empty($imageUrl)) {
+            Log::info('Sending photo with buttons', [
+                'chat_id' => $chat->id,
+                'image_url' => $imageUrl,
+                'has_keyboard' => !empty($inlineKeyboard),
+                'keyboard_rows' => count($inlineKeyboard),
+            ]);
+            
+            $result = $this->telegramService->sendPhoto(
+                $chat->channel,
+                $telegramChatId,
+                $imageUrl,
+                $text,
+                !empty($inlineKeyboard) ? $inlineKeyboard : null
+            );
+            
+            $messageType = 'image';
+            $storedUrl = $imageUrl;
+            if (!str_starts_with($storedUrl, 'http') && !str_starts_with($storedUrl, '/')) {
+                $storedUrl = '/storage/' . ltrim($storedUrl, '/');
+            }
+            $attachments = [['url' => $storedUrl, 'type' => 'image']];
+        } else {
+            // Send text message with buttons
+            Log::info('Sending text message with buttons', [
+                'chat_id' => $chat->id,
+                'has_keyboard' => !empty($inlineKeyboard),
+                'keyboard_rows' => count($inlineKeyboard),
+            ]);
+            
+            $result = $this->telegramService->sendMessage(
+                $chat->channel,
+                $telegramChatId,
+                $text,
+                !empty($inlineKeyboard) ? $inlineKeyboard : null
+            );
+        }
+
+        if ($result) {
+            // Create outgoing message record
+            Message::create([
+                'chat_id' => $chat->id,
+                'channel_id' => $chat->channel_id,
+                'operator_id' => null,
+                'direction' => 'outgoing',
+                'type' => $messageType,
+                'content' => $text,
+                'status' => 'sent',
+                'attachments' => $attachments,
+                'metadata' => [
+                    'telegram_message_id' => $result['message_id'] ?? null,
+                    'sent_by' => 'automation',
+                    'inline_buttons' => $buttons,
                 ],
             ]);
         }

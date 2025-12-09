@@ -16,6 +16,11 @@ class TelegramService
      */
     public function processUpdate(Channel $channel, array $update): void
     {
+        // Handle callback query (button click)
+        if (isset($update['callback_query'])) {
+            $this->handleCallbackQuery($channel, $update['callback_query']);
+        }
+
         // Handle message
         if (isset($update['message'])) {
             $this->handleMessage($channel, $update['message']);
@@ -45,7 +50,7 @@ class TelegramService
                 [
                     'offset' => $offset,
                     'timeout' => $timeout,
-                    'allowed_updates' => ['message', 'edited_message'],
+                    'allowed_updates' => ['message', 'edited_message', 'callback_query'],
                 ]
             );
 
@@ -89,7 +94,7 @@ class TelegramService
     /**
      * Send message to Telegram
      */
-    public function sendMessage(Channel $channel, int $chatId, string $text): ?array
+    public function sendMessage(Channel $channel, int $chatId, string $text, ?array $inlineKeyboard = null): ?array
     {
         $credentials = $channel->credentials ?? [];
         $botToken = $credentials['bot_token'] ?? null;
@@ -99,11 +104,20 @@ class TelegramService
         }
 
         try {
-            $response = Http::post("https://api.telegram.org/bot{$botToken}/sendMessage", [
+            $params = [
                 'chat_id' => $chatId,
                 'text' => $text,
                 'parse_mode' => 'HTML',
-            ]);
+            ];
+
+            // Add inline keyboard if provided
+            if ($inlineKeyboard !== null && !empty($inlineKeyboard)) {
+                $params['reply_markup'] = [
+                    'inline_keyboard' => $inlineKeyboard,
+                ];
+            }
+
+            $response = Http::post("https://api.telegram.org/bot{$botToken}/sendMessage", $params);
 
             if ($response->successful() && $response->json('ok')) {
                 return $response->json('result');
@@ -120,9 +134,9 @@ class TelegramService
     }
 
     /**
-     * Send photo to Telegram
+     * Send photo to Telegram with optional inline keyboard
      */
-    public function sendPhoto(Channel $channel, int $chatId, string $photo, string $caption = ''): ?array
+    public function sendPhoto(Channel $channel, int $chatId, string $photo, string $caption = '', ?array $inlineKeyboard = null): ?array
     {
         $credentials = $channel->credentials ?? [];
         $botToken = $credentials['bot_token'] ?? null;
@@ -157,15 +171,27 @@ class TelegramService
                 }
                 
                 // Upload file as multipart
+                $params = [
+                    'chat_id' => $chatId,
+                ];
+                
+                if ($caption) {
+                    $params['caption'] = $caption;
+                    $params['parse_mode'] = 'HTML';
+                }
+                
+                // Add inline keyboard if provided (must be JSON string for multipart)
+                if ($inlineKeyboard !== null && !empty($inlineKeyboard)) {
+                    $params['reply_markup'] = json_encode([
+                        'inline_keyboard' => $inlineKeyboard,
+                    ]);
+                }
+                
                 $response = Http::attach(
                     'photo',
                     file_get_contents($filePath),
                     basename($filePath)
-                )->post("https://api.telegram.org/bot{$botToken}/sendPhoto", [
-                    'chat_id' => $chatId,
-                    'caption' => $caption ?: null,
-                    'parse_mode' => $caption ? 'HTML' : null,
-                ]);
+                )->post("https://api.telegram.org/bot{$botToken}/sendPhoto", $params);
             } else {
                 // Send as URL
                 $params = [
@@ -176,6 +202,13 @@ class TelegramService
                 if ($caption) {
                     $params['caption'] = $caption;
                     $params['parse_mode'] = 'HTML';
+                }
+                
+                // Add inline keyboard if provided
+                if ($inlineKeyboard !== null && !empty($inlineKeyboard)) {
+                    $params['reply_markup'] = [
+                        'inline_keyboard' => $inlineKeyboard,
+                    ];
                 }
 
                 $response = Http::post("https://api.telegram.org/bot{$botToken}/sendPhoto", $params);
@@ -648,5 +681,149 @@ class TelegramService
         if (isset($message['contact'])) return 'contact';
 
         return 'text';
+    }
+
+    /**
+     * Handle callback query (button click)
+     */
+    public function handleCallbackQuery(Channel $channel, array $callbackQuery): void
+    {
+        $telegramUser = $callbackQuery['from'] ?? null;
+        if (!$telegramUser) {
+            return;
+        }
+
+        $callbackData = $callbackQuery['data'] ?? '';
+        $message = $callbackQuery['message'] ?? null;
+        $chatId = $message['chat']['id'] ?? null;
+
+        if (!$chatId || !$callbackData) {
+            return;
+        }
+
+        // Get or create client
+        $client = Client::firstOrCreate(
+            ['external_id' => 'tg_' . $telegramUser['id']],
+            [
+                'name' => trim(($telegramUser['first_name'] ?? '') . ' ' . ($telegramUser['last_name'] ?? '')),
+                'avatar' => null,
+                'metadata' => [
+                    'telegram_id' => $telegramUser['id'],
+                    'telegram_username' => $telegramUser['username'] ?? null,
+                    'telegram_language' => $telegramUser['language_code'] ?? null,
+                ],
+            ]
+        );
+
+        // Get or create chat
+        $chat = Chat::where('channel_id', $channel->id)
+            ->where('client_id', $client->id)
+            ->first();
+
+        if (!$chat) {
+            $chat = Chat::create([
+                'channel_id' => $channel->id,
+                'client_id' => $client->id,
+                'status' => 'new',
+                'priority' => 'normal',
+                'last_message_at' => now(),
+                'metadata' => [
+                    'telegram_chat_id' => $chatId,
+                ],
+            ]);
+        }
+
+        // Update chat metadata
+        $metadata = $chat->metadata ?? [];
+        if (!isset($metadata['telegram_chat_id'])) {
+            $metadata['telegram_chat_id'] = $chatId;
+            $chat->update(['metadata' => $metadata]);
+        }
+
+        // Answer callback query to remove loading state
+        $this->answerCallbackQuery($channel, $callbackQuery['id']);
+
+        // If callback_data starts with "step_", it's a step trigger
+        if (str_starts_with($callbackData, 'step_')) {
+            $stepId = str_replace('step_', '', $callbackData);
+            $this->executeStepFromCallback($chat, $stepId, $channel);
+        }
+
+        Log::info('Callback query processed', [
+            'channel_id' => $channel->id,
+            'chat_id' => $chat->id,
+            'callback_data' => $callbackData,
+        ]);
+    }
+
+    /**
+     * Answer callback query
+     */
+    protected function answerCallbackQuery(Channel $channel, string $callbackQueryId, ?string $text = null, bool $showAlert = false): void
+    {
+        $credentials = $channel->credentials ?? [];
+        $botToken = $credentials['bot_token'] ?? null;
+
+        if (!$botToken) {
+            return;
+        }
+
+        try {
+            $params = [
+                'callback_query_id' => $callbackQueryId,
+            ];
+
+            if ($text !== null) {
+                $params['text'] = $text;
+                $params['show_alert'] = $showAlert;
+            }
+
+            Http::post("https://api.telegram.org/bot{$botToken}/answerCallbackQuery", $params);
+        } catch (\Exception $e) {
+            Log::error('Telegram answerCallbackQuery error', [
+                'channel_id' => $channel->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Execute step from callback button
+     */
+    protected function executeStepFromCallback(Chat $chat, string $stepId, Channel $channel): void
+    {
+        // Find the automation that contains this step
+        $automationStep = \App\Models\AutomationStep::where('step_id', $stepId)
+            ->with('automation')
+            ->first();
+
+        if (!$automationStep || !$automationStep->automation) {
+            Log::warning('Step not found for callback', [
+                'step_id' => $stepId,
+                'chat_id' => $chat->id,
+            ]);
+            return;
+        }
+
+        $automation = $automationStep->automation;
+
+        // Check if automation is active
+        if (!$automation->is_active) {
+            Log::info('Automation is not active, skipping step execution', [
+                'automation_id' => $automation->id,
+                'step_id' => $stepId,
+            ]);
+            return;
+        }
+
+        // Execute the step using AutomationService
+        $automationService = app(\App\Services\AutomationService::class);
+        $automationService->executeStep($automationStep, $chat);
+
+        Log::info('Step executed from callback', [
+            'automation_id' => $automation->id,
+            'step_id' => $stepId,
+            'chat_id' => $chat->id,
+        ]);
     }
 }

@@ -47,7 +47,7 @@ class AutomationController extends Controller
             'is_active' => 'boolean',
             'steps' => 'required|array|min:1',
             'steps.*.step_id' => 'required|string',
-            'steps.*.type' => 'required|in:send_text,send_image,send_video,send_file,delay,condition,assign_operator,add_tag,remove_tag,close_chat',
+            'steps.*.type' => 'required|in:send_text,send_text_with_buttons,send_image,send_video,send_file,delay,condition,assign_operator,add_tag,remove_tag,close_chat',
             'steps.*.config' => 'nullable|array',
             'steps.*.position' => 'nullable|array',
             'steps.*.next_step_id' => 'nullable|string',
@@ -65,17 +65,53 @@ class AutomationController extends Controller
         ]);
 
         foreach ($validated['steps'] as $order => $stepData) {
-            AutomationStep::create([
-                'automation_id' => $automation->id,
-                'step_id' => $stepData['step_id'],
-                'type' => $stepData['type'],
-                'config' => $stepData['config'] ?? null,
-                'position' => $stepData['position'] ?? null,
-                'order' => $order,
-                'next_step_id' => $stepData['next_step_id'] ?? null,
-                'condition_true_step_id' => $stepData['condition_true_step_id'] ?? null,
-                'condition_false_step_id' => $stepData['condition_false_step_id'] ?? null,
-            ]);
+            try {
+                // Обрабатываем кнопки для send_text_with_buttons
+                $config = $stepData['config'] ?? null;
+                if ($stepData['type'] === 'send_text_with_buttons' && isset($config['buttons']) && is_array($config['buttons'])) {
+                    // Очищаем и нормализуем кнопки
+                    $processedButtons = [];
+                    foreach ($config['buttons'] as $button) {
+                        if (empty($button['text'])) {
+                            continue; // Пропускаем кнопки без текста
+                        }
+                        
+                        $processedButton = ['text' => $button['text']];
+                        
+                        // Добавляем только заполненные поля (url или callback_data)
+                        if (isset($button['url']) && $button['url'] !== '' && $button['url'] !== null) {
+                            $processedButton['url'] = $button['url'];
+                        } elseif (isset($button['callback_data']) && $button['callback_data'] !== '' && $button['callback_data'] !== null) {
+                            $processedButton['callback_data'] = $button['callback_data'];
+                        } else {
+                            continue; // Пропускаем кнопки без действия
+                        }
+                        
+                        $processedButtons[] = $processedButton;
+                    }
+                    
+                    $config['buttons'] = $processedButtons;
+                }
+                
+                AutomationStep::create([
+                    'automation_id' => $automation->id,
+                    'step_id' => $stepData['step_id'],
+                    'type' => $stepData['type'],
+                    'config' => $config,
+                    'position' => $stepData['position'] ?? null,
+                    'order' => $order,
+                    'next_step_id' => $stepData['next_step_id'] ?? null,
+                    'condition_true_step_id' => $stepData['condition_true_step_id'] ?? null,
+                    'condition_false_step_id' => $stepData['condition_false_step_id'] ?? null,
+                ]);
+            } catch (\Exception $e) {
+                \Log::error('Error creating automation step', [
+                    'step_data' => $stepData,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
+                throw $e;
+            }
         }
 
         return redirect()->route('automations.index')->with('success', 'Автоматизация создана');
@@ -107,7 +143,7 @@ class AutomationController extends Controller
             'is_active' => 'boolean',
             'steps' => 'required|array|min:1',
             'steps.*.step_id' => 'required|string',
-            'steps.*.type' => 'required|in:send_text,send_image,send_video,send_file,delay,condition,assign_operator,add_tag,remove_tag,close_chat',
+            'steps.*.type' => 'required|in:send_text,send_text_with_buttons,send_image,send_video,send_file,delay,condition,assign_operator,add_tag,remove_tag,close_chat',
             'steps.*.config' => 'nullable|array',
             'steps.*.position' => 'nullable|array',
             'steps.*.next_step_id' => 'nullable|string',
@@ -128,17 +164,53 @@ class AutomationController extends Controller
         $automation->steps()->delete();
 
         foreach ($validated['steps'] as $order => $stepData) {
-            AutomationStep::create([
-                'automation_id' => $automation->id,
-                'step_id' => $stepData['step_id'],
-                'type' => $stepData['type'],
-                'config' => $stepData['config'] ?? null,
-                'position' => $stepData['position'] ?? null,
-                'order' => $order,
-                'next_step_id' => $stepData['next_step_id'] ?? null,
-                'condition_true_step_id' => $stepData['condition_true_step_id'] ?? null,
-                'condition_false_step_id' => $stepData['condition_false_step_id'] ?? null,
-            ]);
+            try {
+                // Обрабатываем кнопки для send_text_with_buttons
+                $config = $stepData['config'] ?? null;
+                if ($stepData['type'] === 'send_text_with_buttons' && isset($config['buttons']) && is_array($config['buttons'])) {
+                    // Очищаем и нормализуем кнопки
+                    $processedButtons = [];
+                    foreach ($config['buttons'] as $button) {
+                        if (empty($button['text'])) {
+                            continue; // Пропускаем кнопки без текста
+                        }
+                        
+                        $processedButton = ['text' => $button['text']];
+                        
+                        // Добавляем только заполненные поля (url или callback_data)
+                        if (isset($button['url']) && $button['url'] !== '' && $button['url'] !== null) {
+                            $processedButton['url'] = $button['url'];
+                        } elseif (isset($button['callback_data']) && $button['callback_data'] !== '' && $button['callback_data'] !== null) {
+                            $processedButton['callback_data'] = $button['callback_data'];
+                        } else {
+                            continue; // Пропускаем кнопки без действия
+                        }
+                        
+                        $processedButtons[] = $processedButton;
+                    }
+                    
+                    $config['buttons'] = $processedButtons;
+                }
+                
+                AutomationStep::create([
+                    'automation_id' => $automation->id,
+                    'step_id' => $stepData['step_id'],
+                    'type' => $stepData['type'],
+                    'config' => $config,
+                    'position' => $stepData['position'] ?? null,
+                    'order' => $order,
+                    'next_step_id' => $stepData['next_step_id'] ?? null,
+                    'condition_true_step_id' => $stepData['condition_true_step_id'] ?? null,
+                    'condition_false_step_id' => $stepData['condition_false_step_id'] ?? null,
+                ]);
+            } catch (\Exception $e) {
+                \Log::error('Error updating automation step', [
+                    'step_data' => $stepData,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
+                throw $e;
+            }
         }
 
         return redirect()->route('automations.index')->with('success', 'Автоматизация обновлена');

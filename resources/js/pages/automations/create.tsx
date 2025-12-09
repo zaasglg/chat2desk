@@ -40,7 +40,7 @@ interface Props {
     operators: User[];
 }
 
-type StepType = 'send_text' | 'send_image' | 'send_video' | 'send_file' | 'delay' | 'condition' | 'assign_operator' | 'add_tag' | 'remove_tag' | 'close_chat';
+type StepType = 'send_text' | 'send_image' | 'send_video' | 'send_file' | 'delay' | 'condition' | 'assign_operator' | 'add_tag' | 'remove_tag' | 'close_chat' | 'send_text_with_buttons';
 
 interface StepConfig {
     text?: string;
@@ -53,6 +53,7 @@ interface StepConfig {
     tag_name?: string; // Backward compatibility
     tag_ids?: number[]; // Multiple tags
     operator_id?: number;
+    buttons?: Array<{ text: string; url?: string; callback_data?: string; step_id?: string }>; // Для инлайн кнопок
 }
 
 interface Step {
@@ -63,6 +64,7 @@ interface Step {
 
 const stepTypes: { type: StepType; label: string; icon: React.ReactNode; color: string }[] = [
     { type: 'send_text', label: 'Отправить текст', icon: <MessageSquare className="h-4 w-4" />, color: '#22c55e' },
+    { type: 'send_text_with_buttons', label: 'Отправить текст с кнопками', icon: <MessageSquare className="h-4 w-4" />, color: '#10b981' },
     { type: 'send_image', label: 'Отправить изображение', icon: <Image className="h-4 w-4" />, color: '#3b82f6' },
     { type: 'send_video', label: 'Отправить видео', icon: <Video className="h-4 w-4" />, color: '#8b5cf6' },
     { type: 'send_file', label: 'Отправить файл', icon: <FileText className="h-4 w-4" />, color: '#f59e0b' },
@@ -184,13 +186,32 @@ export default function AutomationsCreate({ channels, tags, operators }: Props) 
                     (trigger === 'tag_added' || trigger === 'tag_removed') ? { tag_id: parseInt(triggerTagId) } :
                         null,
             is_active: isActive,
-            steps: steps.map((step, index) => ({
-                step_id: step.id,
-                type: step.type,
-                config: step.config,
-                position: { x: 250, y: index * 150 },
-                next_step_id: steps[index + 1]?.id || null,
-            })) as any,
+            steps: steps.map((step, index) => {
+                // Очищаем конфигурацию кнопок перед отправкой
+                let cleanedConfig = { ...step.config };
+                if (step.type === 'send_text_with_buttons' && cleanedConfig.buttons) {
+                    cleanedConfig.buttons = cleanedConfig.buttons
+                        .filter((btn: any) => btn.text && (btn.url || btn.callback_data))
+                        .map((btn: any) => {
+                            const cleanedBtn: any = { text: btn.text };
+                            if (btn.url) {
+                                cleanedBtn.url = btn.url;
+                            }
+                            if (btn.callback_data) {
+                                cleanedBtn.callback_data = btn.callback_data;
+                            }
+                            return cleanedBtn;
+                        });
+                }
+                
+                return {
+                    step_id: step.id,
+                    type: step.type,
+                    config: cleanedConfig,
+                    position: { x: 250, y: index * 150 },
+                    next_step_id: steps[index + 1]?.id || null,
+                };
+            }) as any,
         }, {
             onFinish: () => setSaving(false),
         });
@@ -389,6 +410,29 @@ export default function AutomationsCreate({ channels, tags, operators }: Props) 
                                                             {step.config.text || 'Введите текст сообщения...'}
                                                         </p>
                                                     )}
+                                                    {step.type === 'send_text_with_buttons' && (
+                                                        <div className="space-y-2">
+                                                            {step.config.url && (
+                                                                <img
+                                                                    src={step.config.url.startsWith('http') || step.config.url.startsWith('/') ? step.config.url : `/storage/${step.config.url}`}
+                                                                    alt="Preview"
+                                                                    className="w-full h-32 object-cover rounded-md"
+                                                                />
+                                                            )}
+                                                            <p className="text-sm text-muted-foreground line-clamp-2">
+                                                                {step.config.text || 'Введите текст сообщения...'}
+                                                            </p>
+                                                            {step.config.buttons && step.config.buttons.length > 0 && (
+                                                                <div className="flex flex-wrap gap-1">
+                                                                    {step.config.buttons.map((btn: any, idx: number) => (
+                                                                        <span key={idx} className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded">
+                                                                            {btn.text}
+                                                                        </span>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
                                                     {step.type === 'delay' && (
                                                         <p className="text-sm text-muted-foreground">
                                                             Переход через {step.config.delay_seconds || 0} сек.
@@ -515,6 +559,201 @@ export default function AutomationsCreate({ channels, tags, operators }: Props) 
                                                 onChange={(e) => updateStepConfig(selectedStep.id, 'text', e.target.value)}
                                                 rows={5}
                                             />
+                                        </div>
+                                    )}
+
+                                    {selectedStep.type === 'send_text_with_buttons' && (
+                                        <div className="space-y-4">
+                                            <div>
+                                                <Label>Изображение (необязательно)</Label>
+                                                <FileUpload
+                                                    type="image"
+                                                    value={selectedStep.config.url || ''}
+                                                    onChange={(url, filename) => {
+                                                        updateStepConfigMultiple(selectedStep.id, {
+                                                            url,
+                                                            filename: filename || ''
+                                                        });
+                                                    }}
+                                                    onDelete={() => {
+                                                        updateStepConfig(selectedStep.id, 'url', '');
+                                                        updateStepConfig(selectedStep.id, 'filename', '');
+                                                    }}
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <Label>Текст сообщения</Label>
+                                                <Textarea
+                                                    className="mt-1"
+                                                    placeholder="Введите текст..."
+                                                    value={selectedStep.config.text || ''}
+                                                    onChange={(e) => updateStepConfig(selectedStep.id, 'text', e.target.value)}
+                                                    rows={5}
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <Label>Инлайн кнопки</Label>
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => {
+                                                            const currentButtons = selectedStep.config.buttons || [];
+                                                            updateStepConfig(selectedStep.id, 'buttons', [
+                                                                ...currentButtons,
+                                                                { text: '' }
+                                                            ]);
+                                                        }}
+                                                    >
+                                                        <Plus className="h-4 w-4 mr-1" />
+                                                        Добавить кнопку
+                                                    </Button>
+                                                </div>
+
+                                                <div className="space-y-2">
+                                                    {(selectedStep.config.buttons || []).map((button: any, index: number) => (
+                                                        <div key={index} className="border rounded-lg p-3 space-y-2">
+                                                            <div className="flex items-center justify-between">
+                                                                <Label className="text-sm">Кнопка {index + 1}</Label>
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    onClick={() => {
+                                                                        const currentButtons = selectedStep.config.buttons || [];
+                                                                        const newButtons = currentButtons.filter((_: any, i: number) => i !== index);
+                                                                        updateStepConfig(selectedStep.id, 'buttons', newButtons);
+                                                                    }}
+                                                                >
+                                                                    <Trash2 className="h-4 w-4" />
+                                                                </Button>
+                                                            </div>
+                                                            <div>
+                                                                <Label className="text-xs">Текст кнопки</Label>
+                                                                <Input
+                                                                    className="mt-1"
+                                                                    placeholder="Текст кнопки"
+                                                                    value={button.text || ''}
+                                                                    onChange={(e) => {
+                                                                        const currentButtons = selectedStep.config.buttons || [];
+                                                                        const newButtons = [...currentButtons];
+                                                                        newButtons[index] = { ...newButtons[index], text: e.target.value };
+                                                                        updateStepConfig(selectedStep.id, 'buttons', newButtons);
+                                                                    }}
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <Label className="text-xs">Тип кнопки</Label>
+                                                                <Select
+                                                                    value={button.url !== undefined ? 'url' : (button.callback_data !== undefined ? 'callback' : 'url')}
+                                                                    onValueChange={(value) => {
+                                                                        const currentButtons = selectedStep.config.buttons || [];
+                                                                        const newButtons = [...currentButtons];
+                                                                        if (value === 'url') {
+                                                                            newButtons[index] = { text: newButtons[index].text, url: '' };
+                                                                            delete newButtons[index].callback_data;
+                                                                        } else {
+                                                                            newButtons[index] = { text: newButtons[index].text, callback_data: '' };
+                                                                            delete newButtons[index].url;
+                                                                        }
+                                                                        updateStepConfig(selectedStep.id, 'buttons', newButtons);
+                                                                    }}
+                                                                >
+                                                                    <SelectTrigger className="mt-1">
+                                                                        <SelectValue />
+                                                                    </SelectTrigger>
+                                                                    <SelectContent>
+                                                                        <SelectItem value="url">URL (ссылка)</SelectItem>
+                                                                        <SelectItem value="callback">Callback (данные)</SelectItem>
+                                                                    </SelectContent>
+                                                                </Select>
+                                                            </div>
+                                                            {button.url !== undefined && (
+                                                                <div>
+                                                                    <Label className="text-xs">URL</Label>
+                                                                    <Input
+                                                                        className="mt-1"
+                                                                        placeholder="https://example.com"
+                                                                        value={button.url || ''}
+                                                                        onChange={(e) => {
+                                                                            const currentButtons = selectedStep.config.buttons || [];
+                                                                            const newButtons = [...currentButtons];
+                                                                            newButtons[index] = { ...newButtons[index], url: e.target.value };
+                                                                            updateStepConfig(selectedStep.id, 'buttons', newButtons);
+                                                                        }}
+                                                                    />
+                                                                </div>
+                                                            )}
+                                                            {button.callback_data !== undefined && (
+                                                                <div className="space-y-2">
+                                                                    <div>
+                                                                        <Label className="text-xs">Выберите шаг для выполнения</Label>
+                                                                        <Select
+                                                                            value={button.step_id || (button.callback_data?.startsWith('step_') ? button.callback_data.replace('step_', '') : '') || ''}
+                                                                            onValueChange={(value) => {
+                                                                                const currentButtons = selectedStep.config.buttons || [];
+                                                                                const newButtons = [...currentButtons];
+                                                                                newButtons[index] = { 
+                                                                                    ...newButtons[index], 
+                                                                                    step_id: value || undefined,
+                                                                                    callback_data: value ? `step_${value}` : ''
+                                                                                };
+                                                                                updateStepConfig(selectedStep.id, 'buttons', newButtons);
+                                                                            }}
+                                                                        >
+                                                                            <SelectTrigger className="mt-1">
+                                                                                <SelectValue placeholder="Выберите шаг" />
+                                                                            </SelectTrigger>
+                                                                            <SelectContent>
+                                                                                {steps
+                                                                                    .filter(s => s.id !== selectedStep.id)
+                                                                                    .map((step) => {
+                                                                                        const stepType = stepTypes.find(st => st.type === step.type);
+                                                                                        return (
+                                                                                            <SelectItem key={step.id} value={step.id}>
+                                                                                                <div className="flex items-center gap-2">
+                                                                                                    {stepType?.icon && (
+                                                                                                        <div
+                                                                                                            className="p-0.5 rounded text-white text-xs"
+                                                                                                            style={{ backgroundColor: stepType.color }}
+                                                                                                        >
+                                                                                                            {stepType.icon}
+                                                                                                        </div>
+                                                                                                    )}
+                                                                                                    <span>Шаг {steps.findIndex(s => s.id === step.id) + 1}: {stepType?.label || step.type}</span>
+                                                                                                </div>
+                                                                                            </SelectItem>
+                                                                                        );
+                                                                                    })}
+                                                                            </SelectContent>
+                                                                        </Select>
+                                                                    </div>
+                                                                    <div>
+                                                                        <Label className="text-xs">Callback Data (автоматически)</Label>
+                                                                        <Input
+                                                                            className="mt-1"
+                                                                            placeholder="callback_data"
+                                                                            value={button.callback_data || ''}
+                                                                            disabled
+                                                                        />
+                                                                        <p className="text-xs text-muted-foreground mt-1">
+                                                                            Автоматически генерируется на основе выбранного шага
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                    {(!selectedStep.config.buttons || selectedStep.config.buttons.length === 0) && (
+                                                        <p className="text-sm text-muted-foreground text-center py-4">
+                                                            Нет кнопок. Нажмите "Добавить кнопку" для создания.
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            </div>
                                         </div>
                                     )}
 

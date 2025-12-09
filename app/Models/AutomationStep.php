@@ -36,6 +36,7 @@ class AutomationStep extends Model
     {
         return match ($this->type) {
             'send_text' => 'Отправить текст',
+            'send_text_with_buttons' => 'Отправить текст с кнопками',
             'send_image' => 'Отправить изображение',
             'send_video' => 'Отправить видео',
             'send_file' => 'Отправить файл',
