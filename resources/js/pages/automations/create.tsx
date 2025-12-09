@@ -80,6 +80,7 @@ const stepTypes: { type: StepType; label: string; icon: React.ReactNode; color: 
     { type: 'delay', label: 'Задержка', icon: <Clock className="h-4 w-4" />, color: '#6b7280' },
     { type: 'condition', label: 'Условие', icon: <GitBranch className="h-4 w-4" />, color: '#ec4899' },
     { type: 'add_tag', label: 'Добавить тег', icon: <TagIcon className="h-4 w-4" />, color: '#14b8a6' },
+    { type: 'remove_tag', label: 'Удалить тег', icon: <TagIcon className="h-4 w-4" />, color: '#ef4444' },
     { type: 'assign_operator', label: 'Назначить оператора', icon: <UserIcon className="h-4 w-4" />, color: '#f97316' },
     { type: 'close_chat', label: 'Закрыть чат', icon: <XCircle className="h-4 w-4" />, color: '#ef4444' },
 ];
@@ -524,6 +525,11 @@ export default function AutomationsCreate({ channels, tags, operators }: Props) 
                                                                 }
                                                                 return 'Выберите теги...';
                                                             })()}
+                                                        </p>
+                                                    )}
+                                                    {step.type === 'remove_tag' && (
+                                                        <p className="text-sm text-muted-foreground">
+                                                            {step.config.tag_name || 'Выберите тег...'}
                                                         </p>
                                                     )}
                                                     {step.type === 'condition' && (
@@ -1052,6 +1058,37 @@ export default function AutomationsCreate({ channels, tags, operators }: Props) 
                                         </div>
                                     )}
 
+                                    {selectedStep.type === 'remove_tag' && (
+                                        <div>
+                                            <Label>Тег для удаления</Label>
+                                            <Select
+                                                value={selectedStep.config.tag_id?.toString() || ''}
+                                                onValueChange={(v) => {
+                                                    const tag = tags.find(t => t.id.toString() === v);
+                                                    updateStepConfig(selectedStep.id, 'tag_id', parseInt(v));
+                                                    updateStepConfig(selectedStep.id, 'tag_name', tag?.name || '');
+                                                }}
+                                            >
+                                                <SelectTrigger className="mt-1">
+                                                    <SelectValue placeholder="Выберите тег" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {tags.map((tag) => (
+                                                        <SelectItem key={tag.id} value={tag.id.toString()}>
+                                                            <div className="flex items-center gap-2">
+                                                                <div
+                                                                    className="w-3 h-3 rounded-full"
+                                                                    style={{ backgroundColor: tag.color }}
+                                                                />
+                                                                {tag.name}
+                                                            </div>
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    )}
+
                                     {selectedStep.type === 'condition' && (
                                         <>
                                             <div>
@@ -1066,6 +1103,7 @@ export default function AutomationsCreate({ channels, tags, operators }: Props) 
                                                     <SelectContent>
                                                         <SelectItem value="has_tag">Есть тег</SelectItem>
                                                         <SelectItem value="message_contains">Сообщение содержит</SelectItem>
+                                                        <SelectItem value="any_message">Любое сообщение</SelectItem>
                                                         <SelectItem value="is_new_client">Новый клиент</SelectItem>
                                                     </SelectContent>
                                                 </Select>
@@ -1095,7 +1133,7 @@ export default function AutomationsCreate({ channels, tags, operators }: Props) 
                                                         </SelectContent>
                                                     </Select>
                                                 </div>
-                                            ) : (
+                                            ) : selectedStep.config.condition_type === 'message_contains' ? (
                                                 <div>
                                                     <Label>Значение</Label>
                                                     <Input
@@ -1105,7 +1143,12 @@ export default function AutomationsCreate({ channels, tags, operators }: Props) 
                                                         onChange={(e) => updateStepConfig(selectedStep.id, 'condition_value', e.target.value)}
                                                     />
                                                 </div>
-                                            )}
+                                            ) : selectedStep.config.condition_type === 'any_message' ? (
+                                                <div>
+                                                    <Label>Любое входящее сообщение</Label>
+                                                    <p className="text-sm text-muted-foreground mt-2">Условие срабатывает на любое входящее сообщение и не требует значения.</p>
+                                                </div>
+                                            ) : null}
                                         </>
                                     )}
 
