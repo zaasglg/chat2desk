@@ -529,6 +529,9 @@ class TelegramService
 
             // Trigger keyword automation
             $automationService->triggerKeyword($chat, $message);
+            
+            // Trigger incoming_message automation
+            $automationService->triggerIncomingMessage($chat, $message);
 
         } catch (\Exception $e) {
             Log::error('Automation trigger error', [
@@ -754,9 +757,14 @@ class TelegramService
         try {
             if (str_contains($callbackData, ':') || (str_starts_with($callbackData, 'b') && str_contains($callbackData, '_'))) {
                 Log::info('Processing button action from callback', ['callback_data' => $callbackData]);
-                $this->executeButtonActionFromCallback($chat, $callbackData, $channel);
+                $buttonHasUrl = $this->executeButtonActionFromCallback($chat, $callbackData, $channel, $callbackQuery);
                 // Answer callback query after successful execution
                 $this->answerCallbackQuery($channel, $callbackQuery['id']);
+                
+                // Hide buttons after click (except for URL buttons)
+                if (!$buttonHasUrl && isset($message['message_id'])) {
+                    $this->hideMessageButtons($channel, $message['chat']['id'], $message['message_id']);
+                }
             } elseif (str_starts_with($callbackData, 'action_')) {
                 // Legacy format (for backwards compatibility)
                 Log::info('Processing legacy button action', ['callback_data' => $callbackData]);
@@ -833,7 +841,7 @@ class TelegramService
     /**
      * Execute button action from callback data (format: step_id:button_index)
      */
-    protected function executeButtonActionFromCallback(Chat $chat, string $callbackData, Channel $channel): void
+    protected function executeButtonActionFromCallback(Chat $chat, string $callbackData, Channel $channel, array $callbackQuery = []): bool
     {
         Log::info('Executing button action from callback', [
             'chat_id' => $chat->id,
@@ -849,6 +857,86 @@ class TelegramService
             $parts = explode(':', $callbackData, 2);
             $stepId = $parts[0] ?? '';
             $buttonIndex = isset($parts[1]) ? (int)$parts[1] : -1;
+            
+            // Check if this is a step inside a group (format: step-{id}-s{index} or group-{id}-s{index}:button_index)
+            // Pattern: anything ending with -s followed by a number
+            if (!empty($stepId) && preg_match('/-s\d+$/', $stepId)) {
+                // Extract group step_id and step index
+                // Format: {group_step_id}-s{step_index}
+                // e.g., "step-1765537993445-s1" means group step_id is "step-1765537993445", step index is 1
+                $groupParts = explode('-s', $stepId, 2);
+                $groupStepId = $groupParts[0] ?? '';
+                $groupStepIndex = isset($groupParts[1]) ? (int)$groupParts[1] : -1;
+                
+                Log::info('Parsing group step callback', [
+                    'original_step_id' => $stepId,
+                    'group_step_id' => $groupStepId,
+                    'group_step_index' => $groupStepIndex,
+                    'button_index' => $buttonIndex,
+                ]);
+                
+                // Find the group step - try to find by step_id
+                $groupStep = \App\Models\AutomationStep::where('step_id', $groupStepId)
+                    ->where('type', 'group')
+                    ->first();
+                
+                // If not found by step_id, try to find by ID if groupStepId starts with "step-"
+                if (!$groupStep && str_starts_with($groupStepId, 'step-')) {
+                    $possibleId = str_replace('step-', '', $groupStepId);
+                    if (is_numeric($possibleId)) {
+                        $groupStep = \App\Models\AutomationStep::where('id', (int)$possibleId)
+                            ->where('type', 'group')
+                            ->first();
+                        if ($groupStep) {
+                            Log::info('Found group step by ID instead of step_id', [
+                                'id' => $groupStep->id,
+                                'step_id' => $groupStep->step_id,
+                            ]);
+                        }
+                    }
+                }
+                
+                if ($groupStep && $groupStepIndex >= 0) {
+                    $groupConfig = $groupStep->config ?? [];
+                    $groupSteps = $groupConfig['steps'] ?? [];
+                    
+                    if (isset($groupSteps[$groupStepIndex])) {
+                        $targetStepConfig = $groupSteps[$groupStepIndex];
+                        $buttons = $targetStepConfig['config']['buttons'] ?? [];
+                        
+                        if (isset($buttons[$buttonIndex])) {
+                            $button = $buttons[$buttonIndex];
+                            
+                            // Check if button has URL (URL buttons should not hide)
+                            if (!empty($button['url'])) {
+                                Log::info('Button from group step has URL, will not hide buttons', ['url' => $button['url']]);
+                                return true; // Return true to indicate URL button
+                            }
+                            
+                            if (!empty($button['action']) && !empty($button['action_config'])) {
+                                Log::info('Executing button action from group step', [
+                                    'action' => $button['action'],
+                                    'action_config' => $button['action_config'],
+                                ]);
+                                $this->executeButtonAction($chat, $button['action'], $button['action_config'], $channel);
+                                // Non-URL buttons should hide
+                                return false;
+                            }
+                            
+                            // Button has no action or URL
+                            return false;
+                        }
+                    }
+                }
+                
+                Log::warning('Could not find group step or button', [
+                    'group_step_id' => $groupStepId,
+                    'group_step_index' => $groupStepIndex,
+                    'button_index' => $buttonIndex,
+                ]);
+                return false;
+            }
+            
             Log::info('Parsed callback_data', ['step_id' => $stepId, 'button_index' => $buttonIndex]);
         } elseif (str_starts_with($callbackData, 'b') && str_contains($callbackData, '_')) {
             // Hash format - need to find step by matching hash
@@ -876,23 +964,23 @@ class TelegramService
             
             if (empty($stepId)) {
                 Log::warning('Could not find step by hash', ['callback_data' => $callbackData]);
-                return;
+                return false;
             }
         } else {
             Log::warning('Invalid callback_data format', ['callback_data' => $callbackData]);
-            return;
+            return false;
         }
         
         if (empty($stepId) || $buttonIndex < 0) {
             Log::warning('Invalid callback_data format', ['callback_data' => $callbackData, 'step_id' => $stepId, 'button_index' => $buttonIndex]);
-            return;
+            return false;
         }
         
         // Find the step
         $step = \App\Models\AutomationStep::where('step_id', $stepId)->first();
         if (!$step) {
             Log::warning('Step not found', ['step_id' => $stepId]);
-            return;
+            return false;
         }
         
         // Get button config from step
@@ -905,15 +993,21 @@ class TelegramService
                 'button_index' => $buttonIndex,
                 'available_indices' => array_keys($buttons),
             ]);
-            return;
+            return false;
         }
         
         $button = $buttons[$buttonIndex];
         Log::info('Button config', ['button' => $button]);
         
+        // Check if button has URL (URL buttons should not hide and are handled by Telegram directly)
+        if (!empty($button['url'])) {
+            Log::info('Button has URL, will not hide buttons (URL buttons are handled by Telegram)', ['url' => $button['url']]);
+            return true; // Return true to indicate URL button
+        }
+        
         if (empty($button['action']) || empty($button['action_config'])) {
             Log::warning('Button has no action', ['button' => $button]);
-            return;
+            return false;
         }
         
         // Execute the action
@@ -923,6 +1017,9 @@ class TelegramService
         ]);
         $this->executeButtonAction($chat, $button['action'], $button['action_config'], $channel);
         Log::info('Button action executed successfully');
+        
+        // Return false to indicate that buttons should be hidden (non-URL button)
+        return false;
     }
 
     /**
@@ -940,34 +1037,70 @@ class TelegramService
             case 'send_photo':
                 $url = $config['url'] ?? '';
                 if ($url) {
-                    $this->sendPhoto($channel, $telegramChatId, $url, '');
+                    Log::info('Sending photo from button action', ['url' => $url, 'chat_id' => $chat->id]);
+                    $result = $this->sendPhoto($channel, $telegramChatId, $url, '');
+                    if (!$result) {
+                        Log::warning('Failed to send photo from button action', ['url' => $url, 'chat_id' => $chat->id]);
+                    }
+                } else {
+                    Log::warning('send_photo action called without URL', ['config' => $config]);
                 }
                 break;
 
             case 'send_video':
                 $url = $config['url'] ?? '';
                 if ($url) {
-                    $this->sendVideo($channel, $telegramChatId, $url, '');
+                    Log::info('Sending video from button action', ['url' => $url, 'chat_id' => $chat->id]);
+                    $result = $this->sendVideo($channel, $telegramChatId, $url, '');
+                    if (!$result) {
+                        Log::warning('Failed to send video from button action', ['url' => $url, 'chat_id' => $chat->id]);
+                    }
+                } else {
+                    Log::warning('send_video action called without URL', ['config' => $config]);
                 }
                 break;
 
             case 'send_file':
                 $url = $config['url'] ?? '';
                 if ($url) {
-                    $this->sendDocument($channel, $telegramChatId, $url, '');
+                    Log::info('Sending file from button action', ['url' => $url, 'chat_id' => $chat->id]);
+                    $result = $this->sendDocument($channel, $telegramChatId, $url, '');
+                    if (!$result) {
+                        Log::warning('Failed to send file from button action', ['url' => $url, 'chat_id' => $chat->id]);
+                    }
+                } else {
+                    Log::warning('send_file action called without URL', ['config' => $config]);
                 }
                 break;
 
             case 'send_text':
                 $text = $config['text'] ?? '';
                 if ($text) {
-                    $this->sendMessage($channel, $telegramChatId, $text);
+                    Log::info('Sending text from button action', ['text_length' => strlen($text), 'chat_id' => $chat->id]);
+                    $result = $this->sendMessage($channel, $telegramChatId, $text);
+                    if (!$result) {
+                        Log::warning('Failed to send text from button action', ['chat_id' => $chat->id]);
+                    }
+                } else {
+                    Log::warning('send_text action called without text', ['config' => $config]);
                 }
                 break;
 
             case 'add_tag':
                 $tagIds = $config['tag_ids'] ?? [];
-                if (!empty($tagIds)) {
+                Log::info('add_tag action called', [
+                    'chat_id' => $chat->id,
+                    'config' => $config,
+                    'tag_ids' => $tagIds,
+                    'tag_ids_type' => gettype($tagIds),
+                    'tag_ids_is_array' => is_array($tagIds),
+                ]);
+                
+                if (!empty($tagIds) && is_array($tagIds)) {
+                    // Ensure all tag IDs are integers
+                    $tagIds = array_map('intval', $tagIds);
+                    $tagIds = array_filter($tagIds, fn($id) => $id > 0);
+                    
                     $client = $chat->client;
                     if ($client) {
                         $client->tags()->syncWithoutDetaching($tagIds);
@@ -978,12 +1111,27 @@ class TelegramService
                     } else {
                         Log::warning('No client found for chat when adding tags', ['chat_id' => $chat->id]);
                     }
+                } else {
+                    Log::warning('Empty or invalid tag_ids in add_tag action', [
+                        'tag_ids' => $tagIds,
+                        'config' => $config,
+                    ]);
                 }
                 break;
 
             case 'remove_tag':
                 $tagIds = $config['tag_ids'] ?? [];
-                if (!empty($tagIds)) {
+                Log::info('remove_tag action called', [
+                    'chat_id' => $chat->id,
+                    'config' => $config,
+                    'tag_ids' => $tagIds,
+                ]);
+                
+                if (!empty($tagIds) && is_array($tagIds)) {
+                    // Ensure all tag IDs are integers
+                    $tagIds = array_map('intval', $tagIds);
+                    $tagIds = array_filter($tagIds, fn($id) => $id > 0);
+                    
                     $client = $chat->client;
                     if ($client) {
                         $client->tags()->detach($tagIds);
@@ -994,6 +1142,11 @@ class TelegramService
                     } else {
                         Log::warning('No client found for chat when removing tags', ['chat_id' => $chat->id]);
                     }
+                } else {
+                    Log::warning('Empty or invalid tag_ids in remove_tag action', [
+                        'tag_ids' => $tagIds,
+                        'config' => $config,
+                    ]);
                 }
                 break;
 
@@ -1005,5 +1158,48 @@ class TelegramService
             'action' => $action,
             'chat_id' => $chat->id,
         ]);
+    }
+
+    /**
+     * Hide inline buttons from message
+     */
+    protected function hideMessageButtons(Channel $channel, int $chatId, int $messageId): void
+    {
+        $credentials = $channel->credentials ?? [];
+        $botToken = $credentials['bot_token'] ?? null;
+
+        if (!$botToken) {
+            return;
+        }
+
+        try {
+            $params = [
+                'chat_id' => $chatId,
+                'message_id' => $messageId,
+                'reply_markup' => json_encode(['inline_keyboard' => []]),
+            ];
+
+            $response = Http::post("https://api.telegram.org/bot{$botToken}/editMessageReplyMarkup", $params);
+            
+            if ($response->successful()) {
+                Log::info('Message buttons hidden successfully', [
+                    'channel_id' => $channel->id,
+                    'chat_id' => $chatId,
+                    'message_id' => $messageId,
+                ]);
+            } else {
+                Log::warning('Failed to hide message buttons', [
+                    'channel_id' => $channel->id,
+                    'chat_id' => $chatId,
+                    'message_id' => $messageId,
+                    'response' => $response->body(),
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::error('Telegram hideMessageButtons error', [
+                'channel_id' => $channel->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }

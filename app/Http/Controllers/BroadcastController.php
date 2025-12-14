@@ -239,8 +239,15 @@ class BroadcastController extends Controller
 
         // Закрыть чаты
         if ($operations['close_chats'] ?? false) {
+            $automationService = app(\App\Services\AutomationService::class);
             foreach ($chats as $chat) {
+                $wasClosed = $chat->status === 'closed';
                 $chat->update(['status' => 'closed']);
+                
+                // Trigger chat_closed automation if status changed to closed
+                if (!$wasClosed) {
+                    $automationService->triggerChatClosed($chat);
+                }
             }
         }
     }

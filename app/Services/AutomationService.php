@@ -78,6 +78,66 @@ class AutomationService
     }
 
     /**
+     * Trigger automation on incoming message
+     */
+    public function triggerIncomingMessage(Chat $chat, Message $message): void
+    {
+        $automations = Automation::where('is_active', true)
+            ->where('trigger', 'incoming_message')
+            ->where(function ($query) use ($chat) {
+                $query->whereNull('channel_id')
+                    ->orWhere('channel_id', $chat->channel_id);
+            })
+            ->with('steps')
+            ->orderBy('id')
+            ->get();
+
+        foreach ($automations as $automation) {
+            $this->executeAutomation($automation, $chat, $message);
+        }
+    }
+
+    /**
+     * Trigger automation when chat is opened by operator
+     */
+    public function triggerChatOpened(Chat $chat): void
+    {
+        $automations = Automation::where('is_active', true)
+            ->where('trigger', 'chat_opened')
+            ->where(function ($query) use ($chat) {
+                $query->whereNull('channel_id')
+                    ->orWhere('channel_id', $chat->channel_id);
+            })
+            ->with('steps')
+            ->orderBy('id')
+            ->get();
+
+        foreach ($automations as $automation) {
+            $this->executeAutomation($automation, $chat);
+        }
+    }
+
+    /**
+     * Trigger automation when chat is closed
+     */
+    public function triggerChatClosed(Chat $chat): void
+    {
+        $automations = Automation::where('is_active', true)
+            ->where('trigger', 'chat_closed')
+            ->where(function ($query) use ($chat) {
+                $query->whereNull('channel_id')
+                    ->orWhere('channel_id', $chat->channel_id);
+            })
+            ->with('steps')
+            ->orderBy('id')
+            ->get();
+
+        foreach ($automations as $automation) {
+            $this->executeAutomation($automation, $chat);
+        }
+    }
+
+    /**
      * Execute automation steps
      */
     public function executeAutomation(Automation $automation, Chat $chat, ?Message $triggerMessage = null): void
@@ -169,6 +229,41 @@ class AutomationService
         }
 
         switch ($step->type) {
+            case 'group':
+                // Execute all steps inside the group
+                $groupSteps = $config['steps'] ?? [];
+                if (!empty($groupSteps) && is_array($groupSteps)) {
+                    Log::info('Executing group steps', [
+                        'step_id' => $step->id ?? $step->step_id ?? null,
+                        'group_name' => $config['name'] ?? 'Unnamed group',
+                        'steps_count' => count($groupSteps),
+                    ]);
+                    
+                    $groupStepId = $step->step_id ?? 'group-' . ($step->id ?? 'unknown');
+                    
+                    foreach ($groupSteps as $groupStepIndex => $groupStepConfig) {
+                        // Create a temporary AutomationStep object for execution
+                        $groupStep = new AutomationStep();
+                        // For steps inside groups, use group step_id with index as identifier
+                        // This ensures callback_data can be properly generated
+                        $groupStep->step_id = $groupStepConfig['step_id'] ?? ($groupStepId . '-s' . $groupStepIndex);
+                        $groupStep->type = $groupStepConfig['type'] ?? 'send_text';
+                        
+                        // Store group context in config for callback_data generation
+                        $stepConfig = $groupStepConfig['config'] ?? [];
+                        $stepConfig['_group_step_id'] = $groupStepId;
+                        $stepConfig['_group_step_index'] = $groupStepIndex;
+                        $groupStep->config = $stepConfig;
+                        
+                        $groupStep->automation_id = $step->automation_id;
+                        $groupStep->exists = false; // Mark as not persisted
+                        
+                        // Execute the step inside the group recursively
+                        $this->executeStep($groupStep, $chat, $log, $triggerMessage);
+                    }
+                }
+                break;
+
             case 'send_text':
                 $this->executeStepSendText($chat, $config);
                 break;
@@ -232,6 +327,7 @@ class AutomationService
     {
         $text = $config['text'] ?? '';
         if (empty($text)) {
+            Log::warning('executeStepSendText: empty text', ['config' => $config]);
             return;
         }
 
@@ -245,12 +341,24 @@ class AutomationService
             return;
         }
 
+        Log::info('Sending text message', [
+            'chat_id' => $chat->id,
+            'telegram_chat_id' => $telegramChatId,
+            'text_length' => strlen($text),
+        ]);
+
         // Send via Telegram
         $result = $this->telegramService->sendMessage(
             $chat->channel,
             $telegramChatId,
             $text
         );
+
+        Log::info('Text message send result', [
+            'chat_id' => $chat->id,
+            'result' => $result ? 'success' : 'failed',
+            'message_id' => $result['message_id'] ?? null,
+        ]);
 
         if ($result) {
             // Create outgoing message record
@@ -267,6 +375,8 @@ class AutomationService
                     'sent_by' => 'automation',
                 ],
             ]);
+        } else {
+            Log::error('Failed to send text message', ['chat_id' => $chat->id]);
         }
     }
 
@@ -313,6 +423,30 @@ class AutomationService
                     // button_index is 1-2 digits
                     // So format: {step_id}:{button_index} fits well
                     $stepId = $step->step_id ?? '';
+                    
+                    // If step_id is empty (can happen for steps inside groups), check for group context
+                    if (empty($stepId)) {
+                        $config = $step->config ?? [];
+                        if (isset($config['_group_step_id']) && isset($config['_group_step_index'])) {
+                            // Use group step_id with index for steps inside groups
+                            // Format: {group_step_id}-s{step_index}
+                            $stepId = $config['_group_step_id'] . '-s' . $config['_group_step_index'];
+                        } elseif (isset($step->id)) {
+                            // Use step ID from database
+                            $stepId = 'step-' . $step->id;
+                        } else {
+                            // Fallback: use a generated ID
+                            $stepId = 'step-' . uniqid();
+                        }
+                    } else {
+                        // Step_id is set, but if it's a step inside a group, we need to add the group context
+                        $config = $step->config ?? [];
+                        if (isset($config['_group_step_id']) && isset($config['_group_step_index'])) {
+                            // Override with group format
+                            $stepId = $config['_group_step_id'] . '-s' . $config['_group_step_index'];
+                        }
+                    }
+                    
                     $callbackData = $stepId . ':' . $buttonIndex;
                     
                     // If step_id is too long, use a hash
@@ -385,6 +519,12 @@ class AutomationService
                 !empty($inlineKeyboard) ? $inlineKeyboard : null
             );
         }
+
+        Log::info('Text message with buttons send result', [
+            'chat_id' => $chat->id,
+            'result' => $result ? 'success' : 'failed',
+            'message_id' => $result['message_id'] ?? null,
+        ]);
 
         if ($result) {
             // Create outgoing message record

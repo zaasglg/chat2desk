@@ -204,21 +204,37 @@ class ChatController extends Controller
 
         // If operator_id is provided, assign to operator and clear group.
         if ($request->filled('operator_id')) {
+            $wasOpen = $chat->status === 'open';
             $chat->update([
                 'operator_id' => $request->operator_id,
                 'operator_group_id' => null,
                 'status' => 'open',
             ]);
+            
+            // Trigger chat_opened automation if status changed to open
+            if (!$wasOpen) {
+                $automationService = app(\App\Services\AutomationService::class);
+                $automationService->triggerChatOpened($chat);
+            }
+            
             return back()->with('success', 'Чат назначен оператору');
         }
 
         // If operator_group_id provided, assign to group and clear operator
         if ($request->filled('operator_group_id')) {
+            $wasOpen = $chat->status === 'open';
             $chat->update([
                 'operator_group_id' => $request->operator_group_id,
                 'operator_id' => null,
                 'status' => 'open',
             ]);
+            
+            // Trigger chat_opened automation if status changed to open
+            if (!$wasOpen) {
+                $automationService = app(\App\Services\AutomationService::class);
+                $automationService->triggerChatOpened($chat);
+            }
+            
             return back()->with('success', 'Чат передан в группу операторов');
         }
 
@@ -238,7 +254,20 @@ class ChatController extends Controller
             'status' => 'required|in:new,open,pending,resolved,closed',
         ]);
 
+        $oldStatus = $chat->status;
         $chat->update(['status' => $request->status]);
+        
+        $automationService = app(\App\Services\AutomationService::class);
+        
+        // Trigger chat_opened automation if status changed to open
+        if ($request->status === 'open' && $oldStatus !== 'open') {
+            $automationService->triggerChatOpened($chat);
+        }
+        
+        // Trigger chat_closed automation if status changed to closed
+        if ($request->status === 'closed' && $oldStatus !== 'closed') {
+            $automationService->triggerChatClosed($chat);
+        }
 
         return back()->with('success', 'Статус обновлен');
     }

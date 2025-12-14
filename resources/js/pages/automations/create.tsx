@@ -31,6 +31,9 @@ import {
     XCircle,
     GitBranch,
     GripVertical,
+    Folder,
+    ChevronDown,
+    ChevronRight,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -40,7 +43,7 @@ interface Props {
     operators: User[];
 }
 
-type StepType = 'send_text' | 'send_image' | 'send_video' | 'send_file' | 'delay' | 'condition' | 'assign_operator' | 'add_tag' | 'remove_tag' | 'close_chat' | 'send_text_with_buttons';
+type StepType = 'send_text' | 'send_image' | 'send_video' | 'send_file' | 'delay' | 'condition' | 'assign_operator' | 'add_tag' | 'remove_tag' | 'close_chat' | 'send_text_with_buttons' | 'group';
 
 interface StepConfig {
     text?: string;
@@ -63,12 +66,15 @@ interface StepConfig {
             tag_ids?: number[];
         };
     }>; // Для инлайн кнопок
+    name?: string; // Название группы
+    steps?: Step[]; // Шаги внутри группы
 }
 
 interface Step {
     id: string;
     type: StepType;
     config: StepConfig;
+    isExpanded?: boolean; // Для групп: раскрыта ли группа
 }
 
 const stepTypes: { type: StepType; label: string; icon: React.ReactNode; color: string }[] = [
@@ -102,20 +108,59 @@ export default function AutomationsCreate({ channels, tags, operators }: Props) 
         { title: 'Создание', href: '/automations/create' },
     ];
 
-    const selectedStep = steps.find(s => s.id === selectedStepId);
+    // Рекурсивная функция для поиска шага в группах
+    const findStep = (stepsList: Step[], stepId: string): Step | undefined => {
+        for (const step of stepsList) {
+            if (step.id === stepId) {
+                return step;
+            }
+            if (step.type === 'group' && step.config.steps) {
+                const found = findStep(step.config.steps, stepId);
+                if (found) return found;
+            }
+        }
+        return undefined;
+    };
 
-    const addStep = (type: StepType) => {
+    const selectedStep = selectedStepId ? findStep(steps, selectedStepId) : undefined;
+
+    const addStep = (type: StepType, groupId?: string) => {
         const newStep: Step = {
             id: `step-${Date.now()}`,
             type,
-            config: type === 'delay' ? { delay_seconds: 5 } : {},
+            config: type === 'delay' ? { delay_seconds: 5 } : type === 'group' ? { name: 'Новая группа', steps: [] } : {},
+            isExpanded: type === 'group' ? true : undefined,
         };
+        
+        if (groupId) {
+            // Добавляем шаг в группу
+            setSteps(steps.map(step => {
+                if (step.id === groupId && step.type === 'group') {
+                    return {
+                        ...step,
+                        config: {
+                            ...step.config,
+                            steps: [...(step.config.steps || []), newStep],
+                        },
+                    };
+                }
+                return step;
+            }));
+            setSelectedStepId(newStep.id);
+        } else {
+            // Добавляем шаг на верхний уровень
         setSteps([...steps, newStep]);
         setSelectedStepId(newStep.id);
+        }
     };
 
-    const updateStepConfig = (stepId: string, key: string, value: unknown) => {
-        setSteps(steps.map(step => {
+    const addGroup = () => {
+        addStep('group');
+    };
+
+    const updateStepConfig = (stepId: string, key: string, value: unknown, groupId?: string) => {
+        const updateStepInList = (stepsList: Step[]): Step[] => {
+            return stepsList.map(step => {
             if (step.id === stepId) {
                 const newConfig = { ...step.config };
                 if (value === undefined || value === null) {
@@ -128,12 +173,25 @@ export default function AutomationsCreate({ channels, tags, operators }: Props) 
                     config: newConfig,
                 };
             }
+                if (step.type === 'group' && step.config.steps) {
+                    return {
+                        ...step,
+                        config: {
+                            ...step.config,
+                            steps: updateStepInList(step.config.steps),
+                        },
+                };
+            }
             return step;
-        }));
+            });
+        };
+        
+        setSteps(updateStepInList(steps));
     };
 
-    const updateStepConfigMultiple = (stepId: string, updates: Record<string, unknown>) => {
-        setSteps(steps.map(step => {
+    const updateStepConfigMultiple = (stepId: string, updates: Record<string, unknown>, groupId?: string) => {
+        const updateStepInList = (stepsList: Step[]): Step[] => {
+            return stepsList.map(step => {
             if (step.id === stepId) {
                 const newConfig = { ...step.config };
                 Object.keys(updates).forEach(key => {
@@ -149,16 +207,57 @@ export default function AutomationsCreate({ channels, tags, operators }: Props) 
                     config: newConfig,
                 };
             }
+                if (step.type === 'group' && step.config.steps) {
+                    return {
+                        ...step,
+                        config: {
+                            ...step.config,
+                            steps: updateStepInList(step.config.steps),
+                        },
+                };
+            }
             return step;
-        }));
+            });
+        };
+        
+        setSteps(updateStepInList(steps));
     };
 
 
-    const deleteStep = (stepId: string) => {
+    const deleteStep = (stepId: string, groupId?: string) => {
+        if (groupId) {
+            // Удаляем шаг из группы
+            setSteps(steps.map(step => {
+                if (step.id === groupId && step.type === 'group') {
+                    return {
+                        ...step,
+                        config: {
+                            ...step.config,
+                            steps: (step.config.steps || []).filter((s: Step) => s.id !== stepId),
+                        },
+                    };
+                }
+                return step;
+            }));
+        } else {
+            // Удаляем шаг с верхнего уровня
         setSteps(steps.filter(s => s.id !== stepId));
+        }
         if (selectedStepId === stepId) {
             setSelectedStepId(null);
         }
+    };
+
+    const toggleGroup = (groupId: string) => {
+        setSteps(steps.map(step => {
+            if (step.id === groupId && step.type === 'group') {
+                return {
+                    ...step,
+                    isExpanded: !step.isExpanded,
+                };
+            }
+            return step;
+        }));
     };
 
     const moveStep = (stepId: string, direction: 'up' | 'down') => {
@@ -196,65 +295,338 @@ export default function AutomationsCreate({ channels, tags, operators }: Props) 
                     (trigger === 'tag_added' || trigger === 'tag_removed') ? { tag_id: parseInt(triggerTagId) } :
                         null,
             is_active: isActive,
-            steps: steps.map((step, index) => {
-                // Очищаем конфигурацию кнопок перед отправкой
-                let cleanedConfig = { ...step.config };
-                if (step.type === 'send_text_with_buttons' && cleanedConfig.buttons) {
-                    cleanedConfig.buttons = cleanedConfig.buttons
-                        .filter((btn: any) => {
-                            // Фильтруем кнопки без текста
-                            if (!btn.text) return false;
-                            
-                            // Если есть URL, кнопка валидна
-                            if (btn.url) return true;
-                            
-                            // Если есть action, проверяем наличие необходимых данных в action_config
-                            if (btn.action && btn.action_config) {
-                                const config = btn.action_config;
-                                switch (btn.action) {
-                                    case 'send_photo':
-                                    case 'send_video':
-                                    case 'send_file':
-                                        return !!(config.url);
-                                    case 'send_text':
-                                        return !!(config.text);
-                                    case 'add_tag':
-                                    case 'remove_tag':
-                                        return !!(config.tag_ids && config.tag_ids.length > 0);
-                                    default:
-                                        return false;
-                                }
-                            }
-                            
-                            return false;
-                        })
-                        .map((btn: any) => {
-                            const cleanedBtn: any = { text: btn.text };
-                            if (btn.url) {
-                                cleanedBtn.url = btn.url;
-                            }
-                            if (btn.action && btn.action_config) {
-                                cleanedBtn.action = btn.action;
-                                cleanedBtn.action_config = btn.action_config;
-                            }
-                            return cleanedBtn;
-                        });
-                }
-                
-                return {
-                    step_id: step.id,
-                    type: step.type,
-                    config: cleanedConfig,
-                    position: { x: 250, y: index * 150 },
-                    next_step_id: steps[index + 1]?.id || null,
+            steps: (() => {
+                // Рекурсивная функция для преобразования шагов, включая группы
+                const processSteps = (stepsList: Step[], parentOrder: number = 0): any[] => {
+                    const result: any[] = [];
+                    stepsList.forEach((step, index) => {
+                        const order = parentOrder + index;
+                        
+                        if (step.type === 'group') {
+                            // Для группы создаем шаг группы с вложенными шагами
+                            const groupSteps = step.config.steps || [];
+                            result.push({
+                                step_id: step.id,
+                                type: step.type,
+                                config: {
+                                    name: step.config.name || 'Новая группа',
+                                    steps: groupSteps.map((groupStep: Step, groupIndex: number) => {
+                                        return processStepConfig(groupStep, order * 100 + groupIndex);
+                                    }),
+                                },
+                                position: { x: 250, y: order * 150 },
+                                next_step_id: stepsList[index + 1]?.id || null,
+                                order: order,
+                            });
+                        } else {
+                            // Обычный шаг
+                            const processed = processStepConfig(step, order);
+                            processed.next_step_id = stepsList[index + 1]?.id || null;
+                            result.push(processed);
+                        }
+                    });
+                    return result;
                 };
-            }) as any,
+
+                // Функция для обработки конфигурации отдельного шага
+                const processStepConfig = (step: Step, order: number): any => {
+                    let cleanedConfig = { ...step.config };
+                    
+                    // Удаляем поля, которые не должны отправляться для групп
+                    if (step.type !== 'group') {
+                        delete (cleanedConfig as any).steps;
+                    }
+                    
+                    if (step.type === 'send_text_with_buttons' && cleanedConfig.buttons) {
+                        cleanedConfig.buttons = cleanedConfig.buttons
+                            .filter((btn: any) => {
+                                if (!btn.text) return false;
+                                if (btn.url) return true;
+                                if (btn.action && btn.action_config) {
+                                    const config = btn.action_config;
+                                    switch (btn.action) {
+                                        case 'send_photo':
+                                        case 'send_video':
+                                        case 'send_file':
+                                            return !!(config.url);
+                                        case 'send_text':
+                                            return !!(config.text);
+                                        case 'add_tag':
+                                        case 'remove_tag':
+                                            return !!(config.tag_ids && config.tag_ids.length > 0);
+                                        default:
+                                            return false;
+                                    }
+                                }
+                                return false;
+                            })
+                            .map((btn: any) => {
+                                const cleanedBtn: any = { text: btn.text };
+                                if (btn.url) {
+                                    cleanedBtn.url = btn.url;
+                                }
+                                if (btn.action && btn.action_config) {
+                                    cleanedBtn.action = btn.action;
+                                    cleanedBtn.action_config = btn.action_config;
+                                }
+                                return cleanedBtn;
+                            });
+                    }
+                    
+                    return {
+                        step_id: step.id,
+                        type: step.type,
+                        config: cleanedConfig,
+                        position: { x: 250, y: order * 150 },
+                        order: order,
+                    };
+                };
+                
+                return processSteps(steps);
+            })(),
         }, {
             onFinish: () => setSaving(false),
         });
     };
 
     const getStepType = (type: StepType) => stepTypes.find(s => s.type === type);
+
+    // Рекурсивная функция для рендеринга шага (включая группы)
+    const renderStep = (step: Step, index: number, groupId: string | undefined, level: number = 0) => {
+        const stepType = getStepType(step.type);
+        const groupSteps = step.type === 'group' ? step.config.steps || [] : [];
+        
+        return (
+            <div key={step.id} className={level > 0 ? 'ml-4 border-l-2 border-border pl-4' : ''}>
+                {step.type === 'group' ? (
+                    <>
+                        <Card
+                            className={`!py-0 cursor-pointer transition-all ${selectedStepId === step.id ? 'ring-2 ring-primary' : ''}`}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedStepId(step.id);
+                            }}
+                        >
+                            <div
+                                className="px-4 py-4 rounded-t-lg flex items-center gap-2 text-white text-sm font-medium"
+                                style={{ backgroundColor: '#6366f1' }}
+                            >
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleGroup(step.id);
+                                    }}
+                                    className="hover:bg-white/20 p-1 rounded"
+                                >
+                                    {step.isExpanded ? (
+                                        <ChevronDown className="h-4 w-4" />
+                                    ) : (
+                                        <ChevronRight className="h-4 w-4" />
+                                    )}
+                                </button>
+                                <Folder className="h-4 w-4" />
+                                <span className="flex-1">{step.config.name || 'Новая группа'}</span>
+                                <span className="text-xs opacity-75">
+                                    {(step.config.steps || []).length} шаг{(step.config.steps || []).length !== 1 ? 'ов' : ''}
+                                </span>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 w-6 p-0 hover:bg-white/20"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        deleteStep(step.id, groupId);
+                                    }}
+                                >
+                                    <Trash2 className="h-3 w-3" />
+                                </Button>
+                            </div>
+                            {step.isExpanded && (
+                                <CardContent className="p-3 space-y-2">
+                                    {groupSteps.length > 0 ? (
+                                        groupSteps.map((groupStep: Step, groupIndex: number) => (
+                                            <div key={groupStep.id}>
+                                                {renderStep(groupStep, groupIndex, step.id, level + 1)}
+                                                {groupIndex < groupSteps.length - 1 && (
+                                                    <div className="flex justify-center pt-2">
+                                                        <div className="w-0.5 h-4 bg-border" />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <p className="text-sm text-muted-foreground text-center py-2">
+                                            Группа пуста. Добавьте шаги.
+                                        </p>
+                                    )}
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="w-full mt-2"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelectedStepId(step.id);
+                                        }}
+                                    >
+                                        <Plus className="h-3 w-3 mr-2" />
+                                        Добавить шаг в группу
+                                    </Button>
+                                </CardContent>
+                            )}
+                        </Card>
+                    </>
+                ) : (
+                    <Card
+                        className={`!py-0 cursor-pointer transition-all ${selectedStepId === step.id ? 'ring-2 ring-primary' : ''}`}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedStepId(step.id);
+                        }}
+                    >
+                        <div
+                            className="px-4 py-4 rounded-t-lg flex items-center gap-2 text-white text-sm font-medium"
+                            style={{ backgroundColor: stepType?.color || '#6b7280' }}
+                        >
+                            <GripVertical className="h-4 w-4 opacity-50" />
+                            {stepType?.icon}
+                            <span className="flex-1">{stepType?.label}</span>
+                            <span className="text-xs opacity-75">#{index + 1}</span>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 hover:bg-white/20"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    deleteStep(step.id, groupId);
+                                }}
+                            >
+                                <Trash2 className="h-3 w-3" />
+                            </Button>
+                        </div>
+                        <CardContent className="p-3">
+                            {step.type === 'send_text' && (
+                                <p className="text-sm text-muted-foreground line-clamp-2">
+                                    {step.config.text || 'Введите текст сообщения...'}
+                                </p>
+                            )}
+                            {step.type === 'send_text_with_buttons' && (
+                                <div className="space-y-2">
+                                    {step.config.url && (
+                                        <img
+                                            src={step.config.url.startsWith('http') || step.config.url.startsWith('/') ? step.config.url : `/storage/${step.config.url}`}
+                                            alt="Preview"
+                                            className="w-full h-32 object-cover rounded-md"
+                                        />
+                                    )}
+                                    <p className="text-sm text-muted-foreground line-clamp-2">
+                                        {step.config.text || 'Введите текст сообщения...'}
+                                    </p>
+                                    {step.config.buttons && step.config.buttons.length > 0 && (
+                                        <div className="flex flex-wrap gap-1">
+                                            {step.config.buttons.map((btn: any, idx: number) => (
+                                                <span key={idx} className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded">
+                                                    {btn.text}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                            {step.type === 'delay' && (
+                                <p className="text-sm text-muted-foreground">
+                                    Переход через {step.config.delay_seconds || 0} сек.
+                                </p>
+                            )}
+                            {step.type === 'send_image' && (
+                                <div className="space-y-2">
+                                    {step.config.url ? (
+                                        <img
+                                            src={step.config.url.startsWith('http') || step.config.url.startsWith('/') ? step.config.url : `/storage/${step.config.url}`}
+                                            alt="Preview"
+                                            className="w-full h-32 object-cover rounded-md"
+                                        />
+                                    ) : (
+                                        <p className="text-sm text-muted-foreground">Добавьте изображение</p>
+                                    )}
+                                    {step.config.text && (
+                                        <p className="text-xs text-muted-foreground line-clamp-2">
+                                            {step.config.text}
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+                            {step.type === 'send_video' && (
+                                <p className="text-sm text-muted-foreground">
+                                    {step.config.url ? 'Видео добавлено' : 'Добавьте видео'}
+                                </p>
+                            )}
+                            {step.type === 'send_file' && (
+                                <p className="text-sm text-muted-foreground">
+                                    {step.config.url ? 'Файл добавлен' : 'Добавьте файл'}
+                                </p>
+                            )}
+                            {step.type === 'add_tag' && (
+                                <p className="text-sm text-muted-foreground">
+                                    {(() => {
+                                        const tagIds = step.config.tag_ids || [];
+                                        const tagId = step.config.tag_id;
+                                        const tagName = step.config.tag_name;
+                                        
+                                        if (tagIds.length > 0) {
+                                            const selectedTags = tagIds
+                                                .map(id => tags.find(t => t.id === id)?.name)
+                                                .filter(Boolean);
+                                            return selectedTags.length > 0 
+                                                ? selectedTags.join(', ') 
+                                                : 'Выберите теги...';
+                                        } else if (tagId) {
+                                            const tag = tags.find(t => t.id === tagId);
+                                            return tag?.name || 'Выберите теги...';
+                                        } else if (tagName) {
+                                            return tagName;
+                                        }
+                                        return 'Выберите теги...';
+                                    })()}
+                                </p>
+                            )}
+                            {step.type === 'remove_tag' && (
+                                <p className="text-sm text-muted-foreground">
+                                    {step.config.tag_name || 'Выберите тег...'}
+                                </p>
+                            )}
+                            {step.type === 'condition' && (
+                                <p className="text-sm text-muted-foreground">
+                                    {step.config.condition_type || 'Настройте условие...'}
+                                </p>
+                            )}
+                            {step.type === 'close_chat' && (
+                                <p className="text-sm text-muted-foreground">Закрывает чат</p>
+                            )}
+                            {step.type === 'assign_operator' && (
+                                <p className="text-sm text-muted-foreground">
+                                    {step.config.operator_id 
+                                        ? operators.find(op => op.id === step.config.operator_id)?.name || 'Оператор не выбран'
+                                        : 'Выберите оператора...'}
+                                </p>
+                            )}
+                        </CardContent>
+                    </Card>
+                )}
+                
+                {/* Connection Line - только для верхнего уровня */}
+                {level === 0 && (() => {
+                    const parentSteps = groupId 
+                        ? (steps.find(s => s.id === groupId)?.config.steps || [])
+                        : steps;
+                    return index < parentSteps.length - 1;
+                })() && (
+                    <div className="flex justify-center pt-4">
+                        <div className="w-0.5 h-8 bg-border" />
+                    </div>
+                )}
+            </div>
+        );
+    };
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -324,6 +696,9 @@ export default function AutomationsCreate({ channels, tags, operators }: Props) 
                                             <SelectContent>
                                                 <SelectItem value="new_chat">Новый чат</SelectItem>
                                                 <SelectItem value="keyword">Ключевое слово</SelectItem>
+                                                <SelectItem value="incoming_message">Входящее сообщение</SelectItem>
+                                                <SelectItem value="chat_opened">Чат открыт оператором</SelectItem>
+                                                <SelectItem value="chat_closed">Чат закрыт</SelectItem>
                                                 <SelectItem value="no_response">Нет ответа</SelectItem>
                                                 <SelectItem value="tag_added">Тег добавлен</SelectItem>
                                                 <SelectItem value="tag_removed">Тег удален</SelectItem>
@@ -425,147 +800,15 @@ export default function AutomationsCreate({ channels, tags, operators }: Props) 
 
                                 {/* Steps */}
                                 {steps.map((step, index) => {
-                                    const stepType = getStepType(step.type);
-                                    return (
-                                        <div key={step.id}>
-                                            <Card
-                                                className={`!py-0 cursor-pointer transition-all ${selectedStepId === step.id ? 'ring-2 ring-primary' : ''}`}
-                                                onClick={() => setSelectedStepId(step.id)}
-                                            >
-                                                <div
-                                                    className="px-4 py-4 rounded-t-lg flex items-center gap-2 text-white text-sm font-medium"
-                                                    style={{ backgroundColor: stepType?.color || '#6b7280' }}
-                                                >
-                                                    <GripVertical className="h-4 w-4 opacity-50" />
-                                                    {stepType?.icon}
-                                                    <span className="flex-1">{stepType?.label}</span>
-                                                    <span className="text-xs opacity-75">#{index + 1}</span>
-                                                </div>
-                                                <CardContent className="p-3">
-                                                    {step.type === 'send_text' && (
-                                                        <p className="text-sm text-muted-foreground line-clamp-2">
-                                                            {step.config.text || 'Введите текст сообщения...'}
-                                                        </p>
-                                                    )}
-                                                    {step.type === 'send_text_with_buttons' && (
-                                                        <div className="space-y-2">
-                                                            {step.config.url && (
-                                                                <img
-                                                                    src={step.config.url.startsWith('http') || step.config.url.startsWith('/') ? step.config.url : `/storage/${step.config.url}`}
-                                                                    alt="Preview"
-                                                                    className="w-full h-32 object-cover rounded-md"
-                                                                />
-                                                            )}
-                                                            <p className="text-sm text-muted-foreground line-clamp-2">
-                                                                {step.config.text || 'Введите текст сообщения...'}
-                                                            </p>
-                                                            {step.config.buttons && step.config.buttons.length > 0 && (
-                                                                <div className="flex flex-wrap gap-1">
-                                                                    {step.config.buttons.map((btn: any, idx: number) => (
-                                                                        <span key={idx} className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded">
-                                                                            {btn.text}
-                                                                        </span>
-                                                                    ))}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                    {step.type === 'delay' && (
-                                                        <p className="text-sm text-muted-foreground">
-                                                            Переход через {step.config.delay_seconds || 0} сек.
-                                                        </p>
-                                                    )}
-                                                    {step.type === 'send_image' && (
-                                                        <div className="space-y-2">
-                                                            {step.config.url ? (
-                                                                <img
-                                                                    src={step.config.url.startsWith('http') || step.config.url.startsWith('/') ? step.config.url : `/storage/${step.config.url}`}
-                                                                    alt="Preview"
-                                                                    className="w-full h-32 object-cover rounded-md"
-                                                                />
-                                                            ) : (
-                                                                <p className="text-sm text-muted-foreground">Добавьте изображение</p>
-                                                            )}
-                                                            {step.config.text && (
-                                                                <p className="text-xs text-muted-foreground line-clamp-2">
-                                                                    {step.config.text}
-                                                                </p>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                    {step.type === 'send_video' && (
-                                                        <p className="text-sm text-muted-foreground">
-                                                            {step.config.url ? 'Видео добавлено' : 'Добавьте видео'}
-                                                        </p>
-                                                    )}
-                                                    {step.type === 'send_file' && (
-                                                        <p className="text-sm text-muted-foreground">
-                                                            {step.config.url ? 'Файл добавлен' : 'Добавьте файл'}
-                                                        </p>
-                                                    )}
-                                                    {step.type === 'add_tag' && (
-                                                        <p className="text-sm text-muted-foreground">
-                                                            {(() => {
-                                                                const tagIds = step.config.tag_ids || [];
-                                                                const tagId = step.config.tag_id; // Backward compatibility
-                                                                const tagName = step.config.tag_name; // Backward compatibility
-                                                                
-                                                                if (tagIds.length > 0) {
-                                                                    const selectedTags = tagIds
-                                                                        .map(id => tags.find(t => t.id === id)?.name)
-                                                                        .filter(Boolean);
-                                                                    return selectedTags.length > 0 
-                                                                        ? selectedTags.join(', ') 
-                                                                        : 'Выберите теги...';
-                                                                } else if (tagId) {
-                                                                    const tag = tags.find(t => t.id === tagId);
-                                                                    return tag?.name || 'Выберите теги...';
-                                                                } else if (tagName) {
-                                                                    return tagName;
-                                                                }
-                                                                return 'Выберите теги...';
-                                                            })()}
-                                                        </p>
-                                                    )}
-                                                    {step.type === 'remove_tag' && (
-                                                        <p className="text-sm text-muted-foreground">
-                                                            {step.config.tag_name || 'Выберите тег...'}
-                                                        </p>
-                                                    )}
-                                                    {step.type === 'condition' && (
-                                                        <p className="text-sm text-muted-foreground">
-                                                            {step.config.condition_type || 'Настройте условие...'}
-                                                        </p>
-                                                    )}
-                                                    {step.type === 'close_chat' && (
-                                                        <p className="text-sm text-muted-foreground">Закрывает чат</p>
-                                                    )}
-                                                    {step.type === 'assign_operator' && (
-                                                        <p className="text-sm text-muted-foreground">
-                                                            {step.config.operator_id 
-                                                                ? operators.find(op => op.id === step.config.operator_id)?.name || 'Оператор не выбран'
-                                                                : 'Выберите оператора...'}
-                                                        </p>
-                                                    )}
-                                                </CardContent>
-                                            </Card>
-
-                                            {/* Connection Line */}
-                                            {index < steps.length - 1 && (
-                                                <div className="flex justify-center pt-4">
-                                                    <div className="w-0.5 h-8 bg-border" />
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
+                                    return renderStep(step, index, undefined);
                                 })}
 
-                                {/* Add Step Button */}
+                                {/* Add Group Button */}
                                 <div className="flex justify-center pt-4">
                                     <Button
                                         variant="outline"
                                         className="rounded-full"
-                                        onClick={() => addStep('send_text')}
+                                        onClick={addGroup}
                                     >
                                         <Plus className="h-4 w-4 mr-2" />
                                         Добавить блок
@@ -591,6 +834,42 @@ export default function AutomationsCreate({ channels, tags, operators }: Props) 
                                 </div>
 
                                 <div className="space-y-4">
+                                    {selectedStep.type === 'group' && (
+                                        <div className="space-y-4">
+                                            <div>
+                                                <Label>Название группы</Label>
+                                                <Input
+                                                    className="mt-1"
+                                                    placeholder="Название группы"
+                                                    value={selectedStep.config.name || ''}
+                                                    onChange={(e) => updateStepConfig(selectedStep.id, 'name', e.target.value)}
+                                                />
+                                            </div>
+                                            <div>
+                                                <Label>Добавить шаг в группу</Label>
+                                                <div className="space-y-2 mt-2">
+                                                    {stepTypes.filter(st => st.type !== 'group').map((stepType) => (
+                                                        <button
+                                                            key={stepType.type}
+                                                            onClick={() => addStep(stepType.type, selectedStep.id)}
+                                                            className="w-full flex items-center gap-2 p-2 rounded-lg border hover:bg-accent text-left transition-colors"
+                                                        >
+                                                            <div
+                                                                className="p-1.5 rounded text-white"
+                                                                style={{ backgroundColor: stepType.color }}
+                                                            >
+                                                                {stepType.icon}
+                                                            </div>
+                                                            <span className="text-sm">{stepType.label}</span>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                    
+                                    {selectedStep.type !== 'group' && (
+                                        <>
                                     {selectedStep.type === 'send_text' && (
                                         <div>
                                             <Label>Текст сообщения</Label>
@@ -1204,6 +1483,8 @@ export default function AutomationsCreate({ channels, tags, operators }: Props) 
                                         <Trash2 className="mr-2 h-4 w-4" />
                                         Удалить блок
                                     </Button>
+                                        </>
+                                    )}
                                 </div>
                             </div>
                         </div>
