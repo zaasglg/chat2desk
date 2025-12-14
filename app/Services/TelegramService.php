@@ -6,6 +6,7 @@ use App\Models\Channel;
 use App\Models\Chat;
 use App\Models\Client;
 use App\Models\Message;
+use App\Models\Tag;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -1133,6 +1134,23 @@ class TelegramService
                             'tag_ids' => $tagIds,
                         ]);
                         
+                        // Create system message for tag addition
+                        $tagNames = Tag::whereIn('id', $tagIds)->pluck('name')->toArray();
+                        if (!empty($tagNames)) {
+                            Message::create([
+                                'chat_id' => $chat->id,
+                                'channel_id' => $chat->channel_id,
+                                'direction' => 'outgoing',
+                                'type' => 'text',
+                                'content' => 'Система присвоила клиенту теги: "' . implode('", "', $tagNames) . '".',
+                                'metadata' => [
+                                    'system_action' => 'tag_added',
+                                    'tag_ids' => $tagIds,
+                                    'tag_names' => $tagNames,
+                                ],
+                            ]);
+                        }
+                        
                         // Trigger tag_added automations
                         $automationService = app(AutomationService::class);
                         $automationService->triggerTagAdded($chat, $tagIds);
@@ -1160,6 +1178,9 @@ class TelegramService
                     $tagIds = array_map('intval', $tagIds);
                     $tagIds = array_filter($tagIds, fn($id) => $id > 0);
                     
+                    // Get tag names before removal for system message
+                    $tagNames = Tag::whereIn('id', $tagIds)->pluck('name')->toArray();
+                    
                     $client = $chat->client;
                     if ($client) {
                         $client->tags()->detach($tagIds);
@@ -1167,6 +1188,22 @@ class TelegramService
                             'client_id' => $client->id,
                             'tag_ids' => $tagIds,
                         ]);
+                        
+                        // Create system message for tag removal
+                        if (!empty($tagNames)) {
+                            Message::create([
+                                'chat_id' => $chat->id,
+                                'channel_id' => $chat->channel_id,
+                                'direction' => 'outgoing',
+                                'type' => 'text',
+                                'content' => 'Система удалила у клиента теги: "' . implode('", "', $tagNames) . '".',
+                                'metadata' => [
+                                    'system_action' => 'tag_removed',
+                                    'tag_ids' => $tagIds,
+                                    'tag_names' => $tagNames,
+                                ],
+                            ]);
+                        }
                         
                         // Trigger tag_removed automations
                         $automationService = app(AutomationService::class);
