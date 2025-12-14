@@ -110,6 +110,12 @@ class AutomationService
             return;
         }
 
+        Log::info('triggerTagAdded called', [
+            'chat_id' => $chat->id,
+            'chat_channel_id' => $chat->channel_id,
+            'tag_ids' => $tagIds,
+        ]);
+
         // Prevent recursive triggers when automation adds tags
         if (self::$isExecutingTagAutomation) {
             Log::info('Skipping tag_added trigger - already executing tag automation', [
@@ -128,9 +134,27 @@ class AutomationService
             ->with('steps')
             ->get();
 
+        Log::info('Found tag_added automations', [
+            'count' => $automations->count(),
+            'automations' => $automations->map(fn($a) => [
+                'id' => $a->id,
+                'name' => $a->name,
+                'channel_id' => $a->channel_id,
+                'trigger_config' => $a->trigger_config,
+            ])->toArray(),
+        ]);
+
         foreach ($automations as $automation) {
             $config = $automation->trigger_config ?? [];
             $triggerTagId = $config['tag_id'] ?? null;
+
+            Log::info('Checking automation', [
+                'automation_id' => $automation->id,
+                'automation_name' => $automation->name,
+                'trigger_tag_id' => $triggerTagId,
+                'added_tag_ids' => $tagIds,
+                'tag_match' => $triggerTagId ? in_array((int)$triggerTagId, array_map('intval', $tagIds)) : 'any',
+            ]);
 
             // Deduplication: prevent same automation from running twice for same chat+tag in short time
             $cacheKey = "tag_automation_{$automation->id}_{$chat->id}_" . implode('_', $tagIds);
@@ -159,6 +183,12 @@ class AutomationService
                     } finally {
                         self::$isExecutingTagAutomation = false;
                     }
+                } else {
+                    Log::info('Tag ID does not match, skipping automation', [
+                        'automation_id' => $automation->id,
+                        'trigger_tag_id' => $triggerTagId,
+                        'added_tag_ids' => $tagIds,
+                    ]);
                 }
             } else {
                 // No specific tag - trigger on any tag added
