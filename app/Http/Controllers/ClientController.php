@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Client;
+use App\Services\AutomationService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -63,7 +64,34 @@ class ClientController extends Controller
             'tag_ids.*' => 'exists:tags,id',
         ]);
 
-        $client->tags()->sync($request->tag_ids ?? []);
+        // Get current tag IDs before sync
+        $oldTagIds = $client->tags()->pluck('tags.id')->toArray();
+        $newTagIds = $request->tag_ids ?? [];
+
+        // Sync tags
+        $client->tags()->sync($newTagIds);
+
+        // Find added and removed tags
+        $addedTagIds = array_diff($newTagIds, $oldTagIds);
+        $removedTagIds = array_diff($oldTagIds, $newTagIds);
+
+        // Trigger automations for tag changes
+        if (!empty($addedTagIds) || !empty($removedTagIds)) {
+            // Find an active chat for this client to trigger automations
+            $chat = $client->chats()->orderBy('last_message_at', 'desc')->first();
+            
+            if ($chat) {
+                $automationService = app(AutomationService::class);
+                
+                if (!empty($addedTagIds)) {
+                    $automationService->triggerTagAdded($chat, array_values($addedTagIds));
+                }
+                
+                if (!empty($removedTagIds)) {
+                    $automationService->triggerTagRemoved($chat, array_values($removedTagIds));
+                }
+            }
+        }
 
         return response()->json(['success' => true]);
     }
