@@ -14,6 +14,8 @@ interface FileUploadProps {
 
 export function FileUpload({ type, value, onChange, onDelete }: FileUploadProps) {
     const [uploading, setUploading] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState(0);
+    const [uploadError, setUploadError] = useState<string | null>(null);
     const [uploadedFile, setUploadedFile] = useState<{
         url: string;
         filename: string;
@@ -31,35 +33,72 @@ export function FileUpload({ type, value, onChange, onDelete }: FileUploadProps)
         const file = event.target.files?.[0];
         if (!file) return;
 
+        // Check file size (50MB limit for videos, 10MB for others)
+        const maxSize = type === 'video' ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
+        if (file.size > maxSize) {
+            setUploadError(`Файл слишком большой. Максимальный размер: ${type === 'video' ? '50MB' : '10MB'}`);
+            return;
+        }
+
         setUploading(true);
+        setUploadProgress(0);
+        setUploadError(null);
 
         const formData = new FormData();
         formData.append('file', file);
         formData.append('type', type);
 
         try {
-            const response = await fetch('/api/upload/automation-file', {
-                method: 'POST',
-                body: formData,
-                headers: {
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
-                },
+            const xhr = new XMLHttpRequest();
+            
+            // Track upload progress
+            xhr.upload.addEventListener('progress', (e) => {
+                if (e.lengthComputable) {
+                    const percentComplete = (e.loaded / e.total) * 100;
+                    setUploadProgress(Math.round(percentComplete));
+                }
             });
 
-            const data = await response.json();
+            xhr.addEventListener('load', () => {
+                try {
+                    const data = JSON.parse(xhr.responseText);
+                    
+                    if (xhr.status === 200 && data.success) {
+                        const fileInfo = {
+                            url: data.url,
+                            filename: data.url.split('/').pop() || data.filename,
+                            size: data.size
+                        };
+                        setUploadedFile(fileInfo);
+                        onChange(data.url, data.filename);
+                        setUploadError(null);
+                    } else {
+                        setUploadError(data.message || 'Ошибка загрузки файла');
+                    }
+                } catch (e) {
+                    setUploadError('Ошибка обработки ответа сервера');
+                }
+                setUploading(false);
+            });
 
-            if (data.success) {
-                const fileInfo = {
-                    url: data.url,
-                    filename: data.url.split('/').pop() || data.filename,
-                    size: data.size
-                };
-                setUploadedFile(fileInfo);
-                onChange(data.url, data.filename);
-            }
+            xhr.addEventListener('error', () => {
+                setUploadError('Ошибка сети при загрузке файла');
+                setUploading(false);
+            });
+
+            xhr.addEventListener('timeout', () => {
+                setUploadError('Превышено время ожидания загрузки');
+                setUploading(false);
+            });
+
+            xhr.open('POST', '/api/upload/automation-file');
+            xhr.setRequestHeader('X-CSRF-TOKEN', document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '');
+            xhr.timeout = 120000; // 2 minutes timeout
+            xhr.send(formData);
+
         } catch (error) {
             console.error('Upload failed:', error);
-        } finally {
+            setUploadError('Непредвиденная ошибка загрузки');
             setUploading(false);
         }
     };
@@ -121,25 +160,40 @@ export function FileUpload({ type, value, onChange, onDelete }: FileUploadProps)
             />
 
             {!uploadedFile && !value && (
-                <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={uploading}
-                >
-                    {uploading ? (
-                        <>
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary mr-2" />
-                            Загрузка...
-                        </>
-                    ) : (
-                        <>
-                            <Upload className="h-4 w-4 mr-2" />
-                            Загрузить {type === 'image' ? 'изображение' : type === 'video' ? 'видео' : 'файл'}
-                        </>
+                <div className="space-y-2">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploading}
+                    >
+                        {uploading ? (
+                            <div className="flex items-center w-full">
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary mr-2" />
+                                <span className="flex-1">Загрузка... {uploadProgress}%</span>
+                            </div>
+                        ) : (
+                            <>
+                                <Upload className="h-4 w-4 mr-2" />
+                                Загрузить {type === 'image' ? 'изображение' : type === 'video' ? 'видео' : 'файл'}
+                            </>
+                        )}
+                    </Button>
+                    {uploading && (
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div 
+                                className="bg-primary h-2 rounded-full transition-all duration-300"
+                                style={{ width: `${uploadProgress}%` }}
+                            />
+                        </div>
                     )}
-                </Button>
+                    {uploadError && (
+                        <div className="text-xs text-red-500 mt-1">
+                            {uploadError}
+                        </div>
+                    )}
+                </div>
             )}
 
             {(uploadedFile || value) && (
