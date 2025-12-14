@@ -9,12 +9,16 @@ use App\Models\Chat;
 use App\Models\Client;
 use App\Models\Message;
 use App\Models\Tag;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 class AutomationService
 {
     protected TelegramService $telegramService;
+    
+    // Flag to prevent recursive tag triggers during automation execution
+    protected static bool $isExecutingTagAutomation = false;
 
     public function __construct(TelegramService $telegramService)
     {
@@ -106,6 +110,15 @@ class AutomationService
             return;
         }
 
+        // Prevent recursive triggers when automation adds tags
+        if (self::$isExecutingTagAutomation) {
+            Log::info('Skipping tag_added trigger - already executing tag automation', [
+                'chat_id' => $chat->id,
+                'tag_ids' => $tagIds,
+            ]);
+            return;
+        }
+
         $automations = Automation::where('is_active', true)
             ->where('trigger', 'tag_added')
             ->where(function ($query) use ($chat) {
@@ -119,6 +132,17 @@ class AutomationService
             $config = $automation->trigger_config ?? [];
             $triggerTagId = $config['tag_id'] ?? null;
 
+            // Deduplication: prevent same automation from running twice for same chat+tag in short time
+            $cacheKey = "tag_automation_{$automation->id}_{$chat->id}_" . implode('_', $tagIds);
+            if (Cache::has($cacheKey)) {
+                Log::info('Skipping duplicate tag_added automation', [
+                    'automation_id' => $automation->id,
+                    'chat_id' => $chat->id,
+                ]);
+                continue;
+            }
+            Cache::put($cacheKey, true, now()->addSeconds(30));
+
             // If automation has specific tag_id, check if it matches
             if ($triggerTagId) {
                 if (in_array((int)$triggerTagId, array_map('intval', $tagIds))) {
@@ -128,7 +152,13 @@ class AutomationService
                         'trigger_tag_id' => $triggerTagId,
                         'added_tag_ids' => $tagIds,
                     ]);
-                    $this->executeAutomation($automation, $chat);
+                    
+                    self::$isExecutingTagAutomation = true;
+                    try {
+                        $this->executeAutomation($automation, $chat);
+                    } finally {
+                        self::$isExecutingTagAutomation = false;
+                    }
                 }
             } else {
                 // No specific tag - trigger on any tag added
@@ -137,7 +167,14 @@ class AutomationService
                     'automation_name' => $automation->name,
                     'added_tag_ids' => $tagIds,
                 ]);
-                $this->executeAutomation($automation, $chat);
+                
+                self::$isExecutingTagAutomation = true;
+                try {
+                    $this->executeAutomation($automation, $chat);
+                } finally {
+                    self::$isExecutingTagAutomation = false;
+                }
+            }
             }
         }
     }
@@ -148,6 +185,15 @@ class AutomationService
     public function triggerTagRemoved(Chat $chat, array $tagIds): void
     {
         if (empty($tagIds)) {
+            return;
+        }
+
+        // Prevent recursive triggers when automation removes tags
+        if (self::$isExecutingTagAutomation) {
+            Log::info('Skipping tag_removed trigger - already executing tag automation', [
+                'chat_id' => $chat->id,
+                'tag_ids' => $tagIds,
+            ]);
             return;
         }
 
@@ -164,6 +210,17 @@ class AutomationService
             $config = $automation->trigger_config ?? [];
             $triggerTagId = $config['tag_id'] ?? null;
 
+            // Deduplication: prevent same automation from running twice for same chat+tag in short time
+            $cacheKey = "tag_rm_automation_{$automation->id}_{$chat->id}_" . implode('_', $tagIds);
+            if (Cache::has($cacheKey)) {
+                Log::info('Skipping duplicate tag_removed automation', [
+                    'automation_id' => $automation->id,
+                    'chat_id' => $chat->id,
+                ]);
+                continue;
+            }
+            Cache::put($cacheKey, true, now()->addSeconds(30));
+
             if ($triggerTagId) {
                 if (in_array((int)$triggerTagId, array_map('intval', $tagIds))) {
                     Log::info('Triggering tag_removed automation', [
@@ -172,7 +229,13 @@ class AutomationService
                         'trigger_tag_id' => $triggerTagId,
                         'removed_tag_ids' => $tagIds,
                     ]);
-                    $this->executeAutomation($automation, $chat);
+                    
+                    self::$isExecutingTagAutomation = true;
+                    try {
+                        $this->executeAutomation($automation, $chat);
+                    } finally {
+                        self::$isExecutingTagAutomation = false;
+                    }
                 }
             } else {
                 Log::info('Triggering tag_removed automation (any tag)', [
@@ -180,7 +243,13 @@ class AutomationService
                     'automation_name' => $automation->name,
                     'removed_tag_ids' => $tagIds,
                 ]);
-                $this->executeAutomation($automation, $chat);
+                
+                self::$isExecutingTagAutomation = true;
+                try {
+                    $this->executeAutomation($automation, $chat);
+                } finally {
+                    self::$isExecutingTagAutomation = false;
+                }
             }
         }
     }
