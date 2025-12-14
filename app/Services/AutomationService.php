@@ -205,7 +205,6 @@ class AutomationService
                     self::$isExecutingTagAutomation = false;
                 }
             }
-            }
         }
     }
 
