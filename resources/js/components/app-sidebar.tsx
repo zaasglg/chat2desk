@@ -10,8 +10,8 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
-import { type NavItem, type SharedData } from '@/types';
-import { Link, usePage } from '@inertiajs/react';
+import { type NavItem } from '@/types';
+import { Link } from '@inertiajs/react';
 import {
     LayoutGrid,
     MessageSquare,
@@ -27,7 +27,7 @@ import {
 } from 'lucide-react';
 import AppLogo from './app-logo';
 
-const allNavItems: NavItem[] = [
+const mainNavItems: NavItem[] = [
     {
         title: 'Дашборд',
         href: '/dashboard',
@@ -80,19 +80,6 @@ const allNavItems: NavItem[] = [
     },
 ];
 
-const operatorNavItems: NavItem[] = [
-    {
-        title: 'Чаты',
-        href: '/chats',
-        icon: MessageSquare,
-    },
-    {
-        title: 'Рассылки',
-        href: '/broadcasts/create',
-        icon: Mail,
-    },
-];
-
 const footerNavItems: NavItem[] = [
     {
         title: 'Настройки',
@@ -102,20 +89,13 @@ const footerNavItems: NavItem[] = [
 ];
 
 export function AppSidebar() {
-    const { auth } = usePage<SharedData>().props;
-    const isAdmin = auth.user?.role === 'admin';
-    
-    // Для операторов показываем только "Чаты" и "Рассылки", для админа - все
-    const mainNavItems = isAdmin ? allNavItems : operatorNavItems;
-    const logoHref = isAdmin ? '/dashboard' : '/chats';
-
     return (
         <Sidebar collapsible="icon" variant="inset">
             <SidebarHeader>
                 <SidebarMenu>
                     <SidebarMenuItem>
                         <SidebarMenuButton size="lg" asChild>
-                            <Link href={logoHref} prefetch>
+                            <Link href="/dashboard" prefetch>
                                 <AppLogo />
                             </Link>
                         </SidebarMenuButton>

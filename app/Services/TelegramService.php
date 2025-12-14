@@ -1108,6 +1108,10 @@ class TelegramService
                             'client_id' => $client->id,
                             'tag_ids' => $tagIds,
                         ]);
+                        
+                        // Trigger tag_added automations
+                        $automationService = app(AutomationService::class);
+                        $automationService->triggerTagAdded($chat, $tagIds);
                     } else {
                         Log::warning('No client found for chat when adding tags', ['chat_id' => $chat->id]);
                     }
@@ -1139,6 +1143,10 @@ class TelegramService
                             'client_id' => $client->id,
                             'tag_ids' => $tagIds,
                         ]);
+                        
+                        // Trigger tag_removed automations
+                        $automationService = app(AutomationService::class);
+                        $automationService->triggerTagRemoved($chat, $tagIds);
                     } else {
                         Log::warning('No client found for chat when removing tags', ['chat_id' => $chat->id]);
                     }

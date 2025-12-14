@@ -93,7 +93,95 @@ class AutomationService
             ->get();
 
         foreach ($automations as $automation) {
-            $this->executeAutomation($automation, $chat, $message);
+            $this->executeAutomation($automation, $chat);
+        }
+    }
+
+    /**
+     * Trigger automation when tag is added to client
+     */
+    public function triggerTagAdded(Chat $chat, array $tagIds): void
+    {
+        if (empty($tagIds)) {
+            return;
+        }
+
+        $automations = Automation::where('is_active', true)
+            ->where('trigger', 'tag_added')
+            ->where(function ($query) use ($chat) {
+                $query->whereNull('channel_id')
+                    ->orWhere('channel_id', $chat->channel_id);
+            })
+            ->with('steps')
+            ->get();
+
+        foreach ($automations as $automation) {
+            $config = $automation->trigger_config ?? [];
+            $triggerTagId = $config['tag_id'] ?? null;
+
+            // If automation has specific tag_id, check if it matches
+            if ($triggerTagId) {
+                if (in_array((int)$triggerTagId, array_map('intval', $tagIds))) {
+                    Log::info('Triggering tag_added automation', [
+                        'automation_id' => $automation->id,
+                        'automation_name' => $automation->name,
+                        'trigger_tag_id' => $triggerTagId,
+                        'added_tag_ids' => $tagIds,
+                    ]);
+                    $this->executeAutomation($automation, $chat);
+                }
+            } else {
+                // No specific tag - trigger on any tag added
+                Log::info('Triggering tag_added automation (any tag)', [
+                    'automation_id' => $automation->id,
+                    'automation_name' => $automation->name,
+                    'added_tag_ids' => $tagIds,
+                ]);
+                $this->executeAutomation($automation, $chat);
+            }
+        }
+    }
+
+    /**
+     * Trigger automation when tag is removed from client
+     */
+    public function triggerTagRemoved(Chat $chat, array $tagIds): void
+    {
+        if (empty($tagIds)) {
+            return;
+        }
+
+        $automations = Automation::where('is_active', true)
+            ->where('trigger', 'tag_removed')
+            ->where(function ($query) use ($chat) {
+                $query->whereNull('channel_id')
+                    ->orWhere('channel_id', $chat->channel_id);
+            })
+            ->with('steps')
+            ->get();
+
+        foreach ($automations as $automation) {
+            $config = $automation->trigger_config ?? [];
+            $triggerTagId = $config['tag_id'] ?? null;
+
+            if ($triggerTagId) {
+                if (in_array((int)$triggerTagId, array_map('intval', $tagIds))) {
+                    Log::info('Triggering tag_removed automation', [
+                        'automation_id' => $automation->id,
+                        'automation_name' => $automation->name,
+                        'trigger_tag_id' => $triggerTagId,
+                        'removed_tag_ids' => $tagIds,
+                    ]);
+                    $this->executeAutomation($automation, $chat);
+                }
+            } else {
+                Log::info('Triggering tag_removed automation (any tag)', [
+                    'automation_id' => $automation->id,
+                    'automation_name' => $automation->name,
+                    'removed_tag_ids' => $tagIds,
+                ]);
+                $this->executeAutomation($automation, $chat);
+            }
         }
     }
 
@@ -799,6 +887,9 @@ class AutomationService
                     'sent_by' => 'automation',
                 ],
             ]);
+
+            // Trigger tag_added automations (for chained automations)
+            $this->triggerTagAdded($chat, $tagIdsToAdd);
         }
     }
 
@@ -853,6 +944,9 @@ class AutomationService
                 'sent_by' => 'automation',
             ],
         ]);
+
+        // Trigger tag_removed automations (for chained automations)
+        $this->triggerTagRemoved($chat, [$tag->id]);
     }
 
     /**
