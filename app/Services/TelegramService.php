@@ -7,6 +7,7 @@ use App\Models\Chat;
 use App\Models\Client;
 use App\Models\Message;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class TelegramService
@@ -695,6 +696,18 @@ class TelegramService
             'channel_id' => $channel->id,
             'callback_query' => $callbackQuery,
         ]);
+
+        // Deduplicate by callback_query id to avoid double-processing on Telegram retries
+        $callbackQueryId = $callbackQuery['id'] ?? null;
+        if ($callbackQueryId) {
+            $cacheKey = 'tg_callback_' . $callbackQueryId;
+            if (Cache::has($cacheKey)) {
+                Log::info('Callback already processed, skip', ['callback_query_id' => $callbackQueryId]);
+                return;
+            }
+            // keep short TTL (5 minutes) just to avoid duplicates
+            Cache::put($cacheKey, true, now()->addMinutes(5));
+        }
         
         $telegramUser = $callbackQuery['from'] ?? null;
         if (!$telegramUser) {
