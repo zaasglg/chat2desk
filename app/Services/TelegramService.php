@@ -17,6 +17,17 @@ class TelegramService
      */
     public function processUpdate(Channel $channel, array $update): void
     {
+        // Deduplicate Telegram update by update_id to avoid double processing on retries/parallel delivery
+        $updateId = $update['update_id'] ?? null;
+        if ($updateId !== null) {
+            $cacheKey = 'tg_update_' . $updateId;
+            if (Cache::has($cacheKey)) {
+                Log::info('Telegram update already processed, skip', ['update_id' => $updateId]);
+                return;
+            }
+            Cache::put($cacheKey, true, now()->addMinutes(5));
+        }
+
         // Handle callback query (button click)
         if (isset($update['callback_query'])) {
             $this->handleCallbackQuery($channel, $update['callback_query']);
