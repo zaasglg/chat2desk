@@ -38,9 +38,12 @@ class ChannelController extends Controller
         $botInfo = $response->json('result');
 
         // Check if bot already exists
+        // Note: Using get() + filter because credentials is encrypted and whereJsonContains doesn't work with SQLite on encrypted columns
         $existingChannel = Channel::where('type', 'telegram')
-            ->whereJsonContains('credentials->bot_id', $botInfo['id'])
-            ->first();
+            ->get()
+            ->first(function ($channel) use ($botInfo) {
+                return isset($channel->credentials['bot_id']) && $channel->credentials['bot_id'] == $botInfo['id'];
+            });
 
         if ($existingChannel) {
             return back()->withErrors(['bot_token' => 'Этот бот уже подключен']);
