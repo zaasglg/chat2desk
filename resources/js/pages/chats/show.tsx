@@ -40,12 +40,22 @@ import {
     AlertCircle,
     Plus,
     X,
+    Search,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 interface Props {
     chat: Chat;
     allTags: Tag[];
+    chats: Chat[];
+    stats: {
+        all: number;
+        unread: number;
+    };
+    filters: {
+        category?: string;
+        search?: string;
+    };
 }
 
 const statusLabels = {
@@ -74,7 +84,7 @@ const channelIcons: Record<string, string> = {
     web: '🌐',
 };
 
-export default function ChatShow({ chat, allTags }: Props) {
+export default function ChatShow({ chat, allTags, chats, stats, filters }: Props) {
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const chatColumnRef = useRef<HTMLDivElement | null>(null);
     const autoScrollRef = useRef<boolean>(true);
@@ -368,6 +378,128 @@ export default function ChatShow({ chat, allTags }: Props) {
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={chat.client?.name || `Чат #${chat.id}`} />
             <div className="flex h-full min-h-0">
+                {/* Chats List Sidebar */}
+                <div className="w-80 border-r bg-muted/30 flex flex-col">
+                    {/* Search and Filters */}
+                    <div className="p-4 border-b space-y-3">
+                        <div className="flex gap-2">
+                            <Button
+                                variant={!filters.category || filters.category === 'all' ? 'default' : 'outline'}
+                                size="sm"
+                                className="flex-1"
+                                onClick={() => router.get(`/chats/${chat.id}`, { category: 'all' })}
+                            >
+                                Все чаты
+                                {stats.all > 0 && (
+                                    <Badge variant="secondary" className="ml-2">
+                                        {stats.all}
+                                    </Badge>
+                                )}
+                            </Button>
+                            <Button
+                                variant={filters.category === 'unread' ? 'default' : 'outline'}
+                                size="sm"
+                                className="flex-1"
+                                onClick={() => router.get(`/chats/${chat.id}`, { category: 'unread' })}
+                            >
+                                Непрочитанные
+                                {stats.unread > 0 && (
+                                    <Badge variant="destructive" className="ml-2">
+                                        {stats.unread}
+                                    </Badge>
+                                )}
+                            </Button>
+                        </div>
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input
+                                placeholder="Поиск чатов..."
+                                defaultValue={filters.search || ''}
+                                onChange={(e) => {
+                                    const search = e.target.value;
+                                    router.get(`/chats/${chat.id}`, {
+                                        ...filters,
+                                        search: search || undefined,
+                                    }, { preserveState: true });
+                                }}
+                                className="pl-9"
+                            />
+                        </div>
+                    </div>
+
+                    {/* Chats List */}
+                    <div className="flex-1 overflow-auto">
+                        {chats.length === 0 ? (
+                            <div className="p-4 text-center text-muted-foreground">
+                                Нет чатов
+                            </div>
+                        ) : (
+                            <div className="divide-y">
+                                {chats.map((chatItem) => {
+                                    const isActive = chatItem.id === chat.id;
+                                    const hasUnread = chatItem.unread_count > 0;
+                                    const latestMsg = chatItem.latest_message;
+                                    
+                                    return (
+                                        <a
+                                            key={chatItem.id}
+                                            href={`/chats/${chatItem.id}?${new URLSearchParams(filters as any).toString()}`}
+                                            className={`block p-4 hover:bg-accent/50 transition-colors ${
+                                                isActive ? 'bg-accent' : ''
+                                            }`}
+                                        >
+                                            <div className="flex items-start gap-3">
+                                                <Avatar className="h-10 w-10 flex-shrink-0">
+                                                    <AvatarImage src={chatItem.client?.avatar} />
+                                                    <AvatarFallback>
+                                                        <UserIcon className="h-5 w-5" />
+                                                    </AvatarFallback>
+                                                </Avatar>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center justify-between gap-2 mb-1">
+                                                        <span className={`font-medium truncate ${
+                                                            hasUnread ? 'font-semibold' : ''
+                                                        }`}>
+                                                            {chatItem.client?.name || `Клиент #${chatItem.client_id}`}
+                                                        </span>
+                                                        {chatItem.channel && (
+                                                            <span className="text-lg flex-shrink-0">
+                                                                {channelIcons[chatItem.channel.type] || '💬'}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    {latestMsg && (
+                                                        <p className={`text-sm truncate ${
+                                                            hasUnread ? 'font-medium text-foreground' : 'text-muted-foreground'
+                                                        }`}>
+                                                            {latestMsg.content}
+                                                        </p>
+                                                    )}
+                                                    <div className="flex items-center justify-between mt-1">
+                                                        <span className="text-xs text-muted-foreground">
+                                                            {chatItem.last_message_at
+                                                                ? new Date(chatItem.last_message_at).toLocaleTimeString('ru-RU', {
+                                                                      hour: '2-digit',
+                                                                      minute: '2-digit',
+                                                                  })
+                                                                : ''}
+                                                        </span>
+                                                        {hasUnread && (
+                                                            <Badge variant="destructive" className="h-5 min-w-5 px-1.5">
+                                                                {chatItem.unread_count}
+                                                            </Badge>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </a>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                </div>
+
                 {/* Chat Area */}
                 <div
                     ref={(el) => {
