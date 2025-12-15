@@ -1143,24 +1143,31 @@ class AutomationService
     /**
      * Check if client has specific tag
      */
-    protected function checkHasTag(Chat $chat, string $tagId): bool
+    protected function checkHasTag(Chat $chat, string $tagIdOrName): bool
     {
-        if (empty($tagId) || !$chat->client) {
-            Log::info('checkHasTag: empty tagId or no client', [
-                'tag_id' => $tagId,
+        if (empty($tagIdOrName) || !$chat->client) {
+            Log::info('checkHasTag: empty tagIdOrName or no client', [
+                'tag_id_or_name' => $tagIdOrName,
                 'has_client' => $chat->client ? 'yes' : 'no'
             ]);
             return false;
         }
 
-        $hasTag = $chat->client->tags()->where('tags.id', $tagId)->exists();
+        // Check if value is numeric (ID) or text (name)
+        if (is_numeric($tagIdOrName)) {
+            // Search by ID
+            $hasTag = $chat->client->tags()->where('tags.id', $tagIdOrName)->exists();
+        } else {
+            // Search by name
+            $hasTag = $chat->client->tags()->where('tags.name', $tagIdOrName)->exists();
+        }
         
         // Get client tags for logging
-        $clientTags = $chat->client->tags()->pluck('tags.id')->toArray();
+        $clientTags = $chat->client->tags()->pluck('tags.name', 'tags.id')->toArray();
         
         Log::info('checkHasTag result', [
             'client_id' => $chat->client->id,
-            'tag_id' => $tagId,
+            'tag_id_or_name' => $tagIdOrName,
             'has_tag' => $hasTag,
             'client_tags' => $clientTags
         ]);
