@@ -110,12 +110,26 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
     const [selectedOperator, setSelectedOperator] = useState<number | null>(null);
     const [selectedGroup, setSelectedGroup] = useState<number | null>(null);
     const [assigning, setAssigning] = useState(false);
+    const [searchQuery, setSearchQuery] = useState(filters.search || '');
     const toast = useToast();
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: 'Чаты', href: '/chats' },
         { title: chat.client?.name || `Чат #${chat.id}`, href: `/chats/${chat.id}` },
     ];
+
+    // Debounce search
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            if (searchQuery !== filters.search) {
+                router.get(`/chats/${chat.id}`, {
+                    ...filters,
+                    search: searchQuery || undefined,
+                }, { preserveState: true, preserveScroll: true });
+            }
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [searchQuery]);
 
     useEffect(() => {
         if (autoScrollRef.current) {
@@ -387,7 +401,7 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
                                 variant={!filters.category || filters.category === 'all' ? 'default' : 'outline'}
                                 size="sm"
                                 className="flex-1"
-                                onClick={() => router.get(`/chats/${chat.id}`, { category: 'all' })}
+                                onClick={() => router.get(chat.id === 0 ? '/chats' : `/chats/${chat.id}`, { category: 'all' })}
                             >
                                 Все чаты
                                 {stats.all > 0 && (
@@ -400,7 +414,7 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
                                 variant={filters.category === 'unread' ? 'default' : 'outline'}
                                 size="sm"
                                 className="flex-1"
-                                onClick={() => router.get(`/chats/${chat.id}`, { category: 'unread' })}
+                                onClick={() => router.get(chat.id === 0 ? '/chats' : `/chats/${chat.id}`, { category: 'unread' })}
                             >
                                 Непрочитанные
                                 {stats.unread > 0 && (
@@ -414,14 +428,8 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
                             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                             <Input
                                 placeholder="Поиск чатов..."
-                                defaultValue={filters.search || ''}
-                                onChange={(e) => {
-                                    const search = e.target.value;
-                                    router.get(`/chats/${chat.id}`, {
-                                        ...filters,
-                                        search: search || undefined,
-                                    }, { preserveState: true });
-                                }}
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
                                 className="pl-9"
                             />
                         </div>
@@ -475,6 +483,25 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
                                                             {latestMsg.content}
                                                         </p>
                                                     )}
+                                                    {chatItem.client?.tags && chatItem.client.tags.length > 0 && (
+                                                        <div className="flex flex-wrap gap-1 mt-1">
+                                                            {chatItem.client.tags.slice(0, 3).map((tag) => (
+                                                                <Badge
+                                                                    key={tag.id}
+                                                                    variant="secondary"
+                                                                    className="text-xs px-1.5 py-0"
+                                                                    style={{ backgroundColor: tag.color + '20', color: tag.color }}
+                                                                >
+                                                                    {tag.name}
+                                                                </Badge>
+                                                            ))}
+                                                            {chatItem.client.tags.length > 3 && (
+                                                                <Badge variant="secondary" className="text-xs px-1.5 py-0">
+                                                                    +{chatItem.client.tags.length - 3}
+                                                                </Badge>
+                                                            )}
+                                                        </div>
+                                                    )}
                                                     <div className="flex items-center justify-between mt-1">
                                                         <span className="text-xs text-muted-foreground">
                                                             {chatItem.last_message_at
@@ -519,35 +546,42 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
                     }}
                     className="flex flex-1 flex-col min-h-0 h-screen"
                 >
-                    {/* Scrollable area: header + messages share the same scroll container */}
-                    <div className="flex-1 min-h-0 overflow-auto">
-                        {/* Header (sticky inside scroll container) */}
-                        <div className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b">
-                            <div className="flex items-center gap-4 p-4">
-                                <Button variant="ghost" size="icon" asChild>
-                                    <a href="/chats">
-                                        <ArrowLeft className="h-4 w-4" />
-                                    </a>
-                                </Button>
+                    {chat.id === 0 ? (
+                        /* Empty State */
+                        <div className="flex items-center justify-center h-full">
+                            <div className="text-center">
+                                <div className="text-6xl mb-4">💬</div>
+                                <h3 className="text-lg font-semibold mb-2">Нет чатов</h3>
+                                <p className="text-sm text-muted-foreground">
+                                    Выберите чат из списка или дождитесь новых сообщений
+                                </p>
+                            </div>
+                        </div>
+                    ) : (
+                        <>
+                            {/* Scrollable area: header + messages share the same scroll container */}
+                            <div className="flex-1 min-h-0 overflow-auto">
+                                {/* Header (sticky inside scroll container) */}
+                                <div className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b">
+                                    <div className="flex items-center gap-4 p-4">
+                                        <Avatar className="h-10 w-10">
+                                            <AvatarImage src={chat.client?.avatar} />
+                                            <AvatarFallback>
+                                                <UserIcon className="h-5 w-5" />
+                                            </AvatarFallback>
+                                        </Avatar>
 
-                                <Avatar className="h-10 w-10">
-                                    <AvatarImage src={chat.client?.avatar} />
-                                    <AvatarFallback>
-                                        <UserIcon className="h-5 w-5" />
-                                    </AvatarFallback>
-                                </Avatar>
-
-                                <div className="flex-1">
-                                    <div className="flex items-center gap-2">
-                                        <span className="font-medium">
-                                            {chat.client?.name || `Клиент #${chat.client_id}`}
-                                        </span>
-                                        <span className="text-lg">
-                                            {channelIcons[chat.channel?.type || 'web']}
-                                        </span>
-                                    </div>
-                                    <span className="text-sm text-muted-foreground">
-                                        {chat.channel?.name}
+                                        <div className="flex-1">
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-medium">
+                                                    {chat.client?.name || `Клиент #${chat.client_id}`}
+                                                </span>
+                                                <span className="text-lg">
+                                                    {channelIcons[chat.channel?.type || 'web']}
+                                                </span>
+                                            </div>
+                                            <span className="text-sm text-muted-foreground">
+                                                {chat.channel?.name}
                                     </span>
                                 </div>
 
@@ -687,9 +721,12 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
                             </Button>
                         </form>
                     </div>
+                        </>
+                    )}
                 </div>
 
                 {/* Sidebar - Client Info */}
+                {chat.id !== 0 && (
                 <div className="w-80 border-l bg-muted/30">
                     <div className="p-4">
                         <h3 className="mb-4 font-semibold">Информация о клиенте</h3>
@@ -819,6 +856,7 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
                         </div>
                     </div>
                 </div>
+                )}
             </div>
         </AppLayout>
     );
