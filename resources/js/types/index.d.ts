@@ -107,7 +107,7 @@ export interface Chat {
     client?: Client;
     operator?: User;
     messages?: Message[];
-    latest_message?: Message[];
+    latest_message?: Message | Message[];
 }
 
 export interface Message {

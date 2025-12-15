@@ -446,7 +446,10 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
                                 {chats.map((chatItem) => {
                                     const isActive = chatItem.id === chat.id;
                                     const hasUnread = chatItem.unread_count > 0;
-                                    const latestMsg = chatItem.latest_message;
+                                    // latestMessage приходит как массив из-за HasMany в модели
+                                    const latestMsg = Array.isArray(chatItem.latest_message) 
+                                        ? chatItem.latest_message[0] 
+                                        : chatItem.latest_message;
                                     
                                     return (
                                         <a
