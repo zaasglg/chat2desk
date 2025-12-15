@@ -156,7 +156,8 @@ class AutomationService
                 'tag_match' => $triggerTagId ? in_array((int)$triggerTagId, array_map('intval', $tagIds)) : 'any',
             ]);
 
-            // Deduplication: prevent same automation from running twice for same chat+tag in short time
+            // Deduplication: prevent same automation from running twice for same chat+tag in very short time
+            // Reduced to 3 seconds to allow manual re-triggering while preventing rapid-fire duplicates
             $cacheKey = "tag_automation_{$automation->id}_{$chat->id}_" . implode('_', $tagIds);
             if (Cache::has($cacheKey)) {
                 Log::info('Skipping duplicate tag_added automation', [
@@ -165,7 +166,7 @@ class AutomationService
                 ]);
                 continue;
             }
-            Cache::put($cacheKey, true, now()->addSeconds(30));
+            Cache::put($cacheKey, true, now()->addSeconds(3));
 
             // If automation has specific tag_id, check if it matches
             if ($triggerTagId) {
