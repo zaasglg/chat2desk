@@ -491,12 +491,30 @@ class AutomationService
                 break;
 
             case 'condition':
-                // For conditions, we need to pause automation and wait for next message
-                if ($log) {
-                    $this->pauseAutomationForCondition($step, $chat, $log);
-                    return false; // Stop current execution
+                $conditionType = $config['condition_type'] ?? '';
+                
+                // Conditions that require waiting for next message
+                $waitForMessageConditions = ['message_contains', 'any_message'];
+                
+                if (in_array($conditionType, $waitForMessageConditions)) {
+                    // Pause and wait for next message
+                    if ($log) {
+                        $this->pauseAutomationForCondition($step, $chat, $log);
+                        return false; // Stop current execution
+                    }
+                } else {
+                    // Immediate conditions (has_tag, is_new_client) - check now
+                    $conditionMet = $this->evaluateCondition($chat, $config, $triggerMessage);
+                    
+                    Log::info('Immediate condition evaluated', [
+                        'condition_type' => $conditionType,
+                        'condition_met' => $conditionMet
+                    ]);
+                    
+                    if (!$conditionMet) {
+                        return false; // Stop automation if condition not met
+                    }
                 }
-                // If no log (callback execution), just continue
                 break;
 
             default:
@@ -1096,15 +1114,14 @@ class AutomationService
     }
 
     /**
-     * Execute condition step
+     * Evaluate condition (used by both immediate and paused conditions)
      */
-    protected function executeStepCondition(AutomationStep $step, Chat $chat, AutomationLog $log, ?Message $triggerMessage = null): bool
+    protected function evaluateCondition(Chat $chat, array $config, ?Message $triggerMessage = null): bool
     {
-        $config = $step->config ?? [];
         $conditionType = $config['condition_type'] ?? '';
         $conditionValue = $config['condition_value'] ?? '';
 
-        Log::info('Executing condition', [
+        Log::info('Evaluating condition', [
             'type' => $conditionType,
             'value' => $conditionValue,
             'chat_id' => $chat->id
@@ -1114,6 +1131,8 @@ class AutomationService
 
         switch ($conditionType) {
             case 'has_tag':
+                // Refresh client tags before checking
+                $chat->load('client.tags');
                 $result = $this->checkHasTag($chat, $conditionValue);
                 break;
 
@@ -1138,6 +1157,14 @@ class AutomationService
         ]);
 
         return $result;
+    }
+
+    /**
+     * Execute condition step (deprecated - kept for compatibility)
+     */
+    protected function executeStepCondition(AutomationStep $step, Chat $chat, AutomationLog $log, ?Message $triggerMessage = null): bool
+    {
+        return $this->evaluateCondition($chat, $step->config ?? [], $triggerMessage);
     }
 
     /**
@@ -1254,42 +1281,16 @@ class AutomationService
         }
         
         $conditionConfig = $pausedAutomation['condition_config'] ?? [];
-        $conditionType = $conditionConfig['condition_type'] ?? '';
-        $conditionValue = $conditionConfig['condition_value'] ?? '';
         
         Log::info('Checking paused automation condition', [
             'chat_id' => $chat->id,
-            'condition_type' => $conditionType,
-            'condition_value' => $conditionValue,
+            'condition_type' => $conditionConfig['condition_type'] ?? '',
+            'condition_value' => $conditionConfig['condition_value'] ?? '',
             'message_content' => $newMessage->content
         ]);
         
-        $conditionMet = false;
-
-        switch ($conditionType) {
-            case 'message_contains':
-                if (!empty($conditionValue)) {
-                    $messageContent = mb_strtolower($newMessage->content ?? '');
-                    $searchText = mb_strtolower($conditionValue);
-                    $conditionMet = str_contains($messageContent, $searchText);
-                }
-                break;
-                
-            case 'has_tag':
-                // Refresh chat with client and tags
-                $chat->load('client.tags');
-                $conditionMet = $this->checkHasTag($chat, $conditionValue);
-                break;
-
-            case 'any_message':
-                // Any new incoming message satisfies this condition
-                $conditionMet = true;
-                break;
-                
-            case 'is_new_client':
-                $conditionMet = $this->checkIsNewClient($chat);
-                break;
-        }
+        // Use the centralized evaluateCondition method
+        $conditionMet = $this->evaluateCondition($chat, $conditionConfig, $newMessage);
         
         Log::info('Paused condition result', [
             'condition_met' => $conditionMet
