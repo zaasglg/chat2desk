@@ -638,7 +638,7 @@ export default function ChatShow({ chat, allTags }: Props) {
                                             </Button>
                                         </PopoverTrigger>
                                         <PopoverContent className="w-56 p-2" align="start">
-                                            <div className="space-y-1">
+                                            <div className="space-y-1 max-h-[300px] overflow-auto">
                                                 {allTags.length === 0 ? (
                                                     <p className="text-sm text-muted-foreground text-center py-2">
                                                         Нет доступных тегов
