@@ -470,40 +470,7 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
                                                         }`}>
                                                             {chatItem.client?.name || `Клиент #${chatItem.client_id}`}
                                                         </span>
-                                                        {chatItem.channel && (
-                                                            <span className="text-lg flex-shrink-0">
-                                                                {channelIcons[chatItem.channel.type] || '💬'}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    {latestMsg && (
-                                                        <p className={`text-sm truncate ${
-                                                            hasUnread ? 'font-medium text-foreground' : 'text-muted-foreground'
-                                                        }`}>
-                                                            {latestMsg.content}
-                                                        </p>
-                                                    )}
-                                                    {chatItem.client?.tags && chatItem.client.tags.length > 0 && (
-                                                        <div className="flex flex-wrap gap-1 mt-1">
-                                                            {chatItem.client.tags.slice(0, 3).map((tag) => (
-                                                                <Badge
-                                                                    key={tag.id}
-                                                                    variant="secondary"
-                                                                    className="text-xs px-1.5 py-0"
-                                                                    style={{ backgroundColor: tag.color + '20', color: tag.color }}
-                                                                >
-                                                                    {tag.name}
-                                                                </Badge>
-                                                            ))}
-                                                            {chatItem.client.tags.length > 3 && (
-                                                                <Badge variant="secondary" className="text-xs px-1.5 py-0">
-                                                                    +{chatItem.client.tags.length - 3}
-                                                                </Badge>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                    <div className="flex items-center justify-between mt-1">
-                                                        <span className="text-xs text-muted-foreground">
+                                                        <span className="text-xs text-muted-foreground flex-shrink-0">
                                                             {chatItem.last_message_at
                                                                 ? new Date(chatItem.last_message_at).toLocaleTimeString('ru-RU', {
                                                                       hour: '2-digit',
@@ -511,12 +478,45 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
                                                                   })
                                                                 : ''}
                                                         </span>
-                                                        {hasUnread && (
-                                                            <Badge variant="destructive" className="h-5 min-w-5 px-1.5">
-                                                                {chatItem.unread_count}
-                                                            </Badge>
-                                                        )}
                                                     </div>
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <p className={`text-sm truncate flex-1 ${
+                                                            hasUnread ? 'font-medium text-foreground' : 'text-muted-foreground'
+                                                        }`}>
+                                                            {latestMsg?.content || 'Нет сообщений'}
+                                                        </p>
+                                                        <div className="flex items-center gap-2 flex-shrink-0">
+                                                            {chatItem.channel && (
+                                                                <span className="text-base">
+                                                                    {channelIcons[chatItem.channel.type] || '💬'}
+                                                                </span>
+                                                            )}
+                                                            {hasUnread && (
+                                                                <Badge variant="destructive" className="h-5 min-w-5 px-1.5">
+                                                                    {chatItem.unread_count}
+                                                                </Badge>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    {chatItem.client?.tags && chatItem.client.tags.length > 0 && (
+                                                        <div className="flex flex-wrap gap-1 mt-1.5">
+                                                            {chatItem.client.tags.slice(0, 3).map((tag) => (
+                                                                <Badge
+                                                                    key={tag.id}
+                                                                    variant="secondary"
+                                                                    className="text-xs px-1.5 py-0 h-5"
+                                                                    style={{ backgroundColor: tag.color + '20', color: tag.color }}
+                                                                >
+                                                                    {tag.name}
+                                                                </Badge>
+                                                            ))}
+                                                            {chatItem.client.tags.length > 3 && (
+                                                                <Badge variant="secondary" className="text-xs px-1.5 py-0 h-5">
+                                                                    +{chatItem.client.tags.length - 3}
+                                                                </Badge>
+                                                            )}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                         </a>
