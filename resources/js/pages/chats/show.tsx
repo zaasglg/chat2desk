@@ -96,7 +96,6 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
         const atBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < threshold;
         autoScrollRef.current = atBottom;
     };
-    const [footerStyle, setFooterStyle] = useState<{ left?: number; width?: number }>({});
     const [message, setMessage] = useState('');
     const [sending, setSending] = useState(false);
     const [clientTags, setClientTags] = useState<Tag[]>(chat.client?.tags || []);
@@ -159,21 +158,7 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
     }, [chat.id]);
 
     useEffect(() => {
-        const updatePositions = () => {
-            const el = chatColumnRef.current;
-            if (el) {
-                const rect = el.getBoundingClientRect();
-                setFooterStyle({ left: rect.left, width: rect.width });
-            }
-        };
-
-        // initial
-        updatePositions();
-
-        window.addEventListener('resize', updatePositions);
-
         return () => {
-            window.removeEventListener('resize', updatePositions);
             // remove scroll listener from previous element if any
             if (prevChatElRef.current) prevChatElRef.current.removeEventListener('scroll', onChatScroll);
         };
@@ -392,11 +377,11 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={chat.client?.name || `Чат #${chat.id}`} />
-            <div className="flex h-full min-h-0">
+            <div className="flex h-full overflow-hidden h-svh">
                 {/* Chats List Sidebar */}
-                <div className="w-80 border-r bg-muted/30 flex flex-col">
+                <div className="w-80 border-r bg-muted/30 flex flex-col h-full flex-shrink-0">
                     {/* Search and Filters */}
-                    <div className="p-4 border-b space-y-3">
+                    <div className="p-4 border-b space-y-3 flex-shrink-0">
                         <div className="flex gap-2">
                             <Button
                                 variant={!filters.category || filters.category === 'all' ? 'default' : 'outline'}
@@ -548,7 +533,7 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
                             onChatScroll();
                         }
                     }}
-                    className="flex flex-1 flex-col min-h-0 h-screen"
+                    className="flex flex-1 flex-col h-full overflow-hidden"
                 >
                     {chat.id === 0 ? (
                         /* Empty State */
@@ -563,8 +548,8 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
                         </div>
                     ) : (
                         <>
-                            {/* Scrollable area: header + messages share the same scroll container */}
-                            <div className="flex-1 min-h-0 overflow-auto">
+                            {/* Scrollable area: header + messages */}
+                            <div className="flex-1 overflow-y-auto">
                                 {/* Header (sticky inside scroll container) */}
                                 <div className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b">
                                     <div className="flex items-center gap-4 p-4">
@@ -685,7 +670,7 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
                         </div>
 
                         {/* Messages list */}
-                        <div className="p-4 pb-40">
+                        <div className="p-4 pb-4">
                             <div className="space-y-4">
                                 {messages.map((msg) => (
                                     <MessageBubble key={msg.id} message={msg} onImageClick={setLightboxImage} />
@@ -695,14 +680,8 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
                         </div>
                     </div>
 
-                    {/* Input */}
-                    <div
-                        className="fixed bottom-0 z-50 bg-background/95 border-t backdrop-blur-sm"
-                        style={{
-                            left: footerStyle.left ? `${footerStyle.left}px` : 0,
-                            width: footerStyle.width ? `${footerStyle.width}px` : '100%'
-                        }}
-                    >
+                    {/* Input - fixed at bottom of chat area */}
+                    <div className="flex-shrink-0 bg-background border-t">
                         <form onSubmit={handleSend} className="flex gap-2 items-center w-full px-4 py-3">
                             <Button type="button" variant="ghost" size="icon" className="h-10 w-10 rounded-md">
                                 <Paperclip className="h-4 w-4" />
@@ -731,7 +710,7 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
 
                 {/* Sidebar - Client Info */}
                 {chat.id !== 0 && (
-                <div className="w-80 border-l bg-muted/30">
+                <div className="w-80 border-l bg-muted/30 h-full flex-shrink-0 overflow-y-auto">
                     <div className="p-4">
                         <h3 className="mb-4 font-semibold">Информация о клиенте</h3>
 
