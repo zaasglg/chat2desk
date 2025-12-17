@@ -861,11 +861,11 @@ class TelegramService
     protected function getMessageType(array $message): string
     {
         if (isset($message['text'])) return 'text';
-        if (isset($message['photo'])) return 'photo';
+        if (isset($message['photo'])) return 'image';  // DB expects 'image', not 'photo'
         if (isset($message['video'])) return 'video';
-        if (isset($message['voice'])) return 'voice';
+        if (isset($message['voice'])) return 'audio';  // DB expects 'audio', not 'voice'
         if (isset($message['audio'])) return 'audio';
-        if (isset($message['document'])) return 'document';
+        if (isset($message['document'])) return 'file';  // DB expects 'file', not 'document'
         if (isset($message['sticker'])) return 'sticker';
         if (isset($message['location'])) return 'location';
         if (isset($message['contact'])) return 'contact';
