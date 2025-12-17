@@ -111,6 +111,7 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
     const [selectedGroup, setSelectedGroup] = useState<number | null>(null);
     const [assigning, setAssigning] = useState(false);
     const [searchQuery, setSearchQuery] = useState(filters.search || '');
+    const [lightboxImage, setLightboxImage] = useState<string | null>(null);
     const toast = useToast();
 
     const breadcrumbs: BreadcrumbItem[] = [
@@ -687,7 +688,7 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
                         <div className="p-4 pb-40">
                             <div className="space-y-4">
                                 {messages.map((msg) => (
-                                    <MessageBubble key={msg.id} message={msg} />
+                                    <MessageBubble key={msg.id} message={msg} onImageClick={setLightboxImage} />
                                 ))}
                                 <div ref={messagesEndRef} />
                             </div>
@@ -861,11 +862,32 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
                 </div>
                 )}
             </div>
+
+            {/* Image Lightbox Modal */}
+            {lightboxImage && (
+                <div 
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+                    onClick={() => setLightboxImage(null)}
+                >
+                    <button
+                        className="absolute top-4 right-4 text-white hover:text-gray-300 transition-colors z-10"
+                        onClick={() => setLightboxImage(null)}
+                    >
+                        <X className="h-8 w-8" />
+                    </button>
+                    <img 
+                        src={lightboxImage} 
+                        alt="Enlarged" 
+                        className="max-h-[90vh] max-w-[90vw] object-contain rounded-lg shadow-2xl"
+                        onClick={(e) => e.stopPropagation()}
+                    />
+                </div>
+            )}
         </AppLayout>
     );
 }
 
-function MessageBubble({ message }: { message: Message }) {
+function MessageBubble({ message, onImageClick }: { message: Message; onImageClick: (url: string) => void }) {
     const isOutgoing = message.direction === 'outgoing';
     // detect system messages via explicit system_action metadata
     const meta: any = message.metadata || {};
@@ -944,7 +966,8 @@ function MessageBubble({ message }: { message: Message }) {
                                 key={i}
                                 src={url}
                                 alt={att.name || 'image'}
-                                className="max-h-60 rounded mb-2"
+                                className="max-h-60 rounded mb-2 cursor-zoom-in hover:opacity-90 transition-opacity"
+                                onClick={() => onImageClick(url)}
                             />
                         );
                     }
