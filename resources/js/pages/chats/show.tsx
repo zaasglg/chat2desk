@@ -925,6 +925,11 @@ function MessageBubble({ message }: { message: Message }) {
                 )}
 
                 {message.type === 'text' && <p>{message.content}</p>}
+                
+                {/* Show caption for media messages */}
+                {message.type !== 'text' && message.content && !message.content.startsWith('📷') && !message.content.startsWith('🎬') && !message.content.startsWith('📎') && !message.content.startsWith('🎤') && !message.content.startsWith('🎵') && !message.content.startsWith('🎭') && (
+                    <p className="mb-2">{message.content}</p>
+                )}
 
                 {message.attachments?.map((att, i) => {
                     const a: any = att;
@@ -933,7 +938,7 @@ function MessageBubble({ message }: { message: Message }) {
 
                     if (!url) return null;
 
-                    if (type === 'image') {
+                    if (type === 'image' || type === 'photo' || type === 'sticker') {
                         return (
                             <img
                                 key={i}
@@ -953,8 +958,17 @@ function MessageBubble({ message }: { message: Message }) {
                         );
                     }
 
+                    if (type === 'voice' || type === 'audio') {
+                        return (
+                            <audio key={i} controls className="w-full mb-2">
+                                <source src={url} />
+                                Ваш браузер не поддерживает аудио.
+                            </audio>
+                        );
+                    }
+
                     // default: treat as downloadable file
-                    const fileName = att.name || a.filename || (att.path ? att.path.split('/').pop() : url.split('/').pop());
+                    const fileName = att.name || a.filename || a.file_name || (att.path ? att.path.split('/').pop() : url.split('/').pop());
                     return (
                         <a
                             key={i}

@@ -409,6 +409,119 @@ class TelegramService
     }
 
     /**
+     * Get file info from Telegram
+     */
+    public function getFile(Channel $channel, string $fileId): ?array
+    {
+        $credentials = $channel->credentials ?? [];
+        $botToken = $credentials['bot_token'] ?? null;
+
+        if (!$botToken) {
+            return null;
+        }
+
+        try {
+            $response = Http::get("https://api.telegram.org/bot{$botToken}/getFile", [
+                'file_id' => $fileId,
+            ]);
+
+            if ($response->successful() && $response->json('ok')) {
+                return $response->json('result');
+            }
+        } catch (\Exception $e) {
+            Log::error('Telegram getFile error', [
+                'file_id' => $fileId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return null;
+    }
+
+    /**
+     * Download file from Telegram and save locally
+     */
+    public function downloadAndSaveFile(Channel $channel, string $fileId, string $type = 'file'): ?array
+    {
+        $credentials = $channel->credentials ?? [];
+        $botToken = $credentials['bot_token'] ?? null;
+
+        if (!$botToken) {
+            return null;
+        }
+
+        try {
+            // Get file info from Telegram
+            $fileInfo = $this->getFile($channel, $fileId);
+            if (!$fileInfo || !isset($fileInfo['file_path'])) {
+                Log::error('Failed to get file info from Telegram', ['file_id' => $fileId]);
+                return null;
+            }
+
+            $telegramFilePath = $fileInfo['file_path'];
+            $fileUrl = "https://api.telegram.org/file/bot{$botToken}/{$telegramFilePath}";
+
+            // Download file content
+            $response = Http::timeout(60)->get($fileUrl);
+            if (!$response->successful()) {
+                Log::error('Failed to download file from Telegram', [
+                    'file_id' => $fileId,
+                    'status' => $response->status(),
+                ]);
+                return null;
+            }
+
+            $fileContent = $response->body();
+
+            // Determine file extension from path or mime type
+            $extension = pathinfo($telegramFilePath, PATHINFO_EXTENSION);
+            if (!$extension) {
+                // Map type to extension
+                $typeExtensions = [
+                    'photo' => 'jpg',
+                    'voice' => 'ogg',
+                    'audio' => 'mp3',
+                    'video' => 'mp4',
+                    'sticker' => 'webp',
+                ];
+                $extension = $typeExtensions[$type] ?? 'bin';
+            }
+
+            // Generate unique filename
+            $filename = $type . '_' . time() . '_' . uniqid() . '.' . $extension;
+            
+            // Determine storage directory based on type
+            $directory = 'attachments/' . $type . 's';
+            $storagePath = $directory . '/' . $filename;
+
+            // Save to storage
+            \Illuminate\Support\Facades\Storage::disk('public')->put($storagePath, $fileContent);
+
+            Log::info('File downloaded and saved from Telegram', [
+                'file_id' => $fileId,
+                'storage_path' => $storagePath,
+                'type' => $type,
+                'size' => strlen($fileContent),
+            ]);
+
+            return [
+                'path' => $storagePath,
+                'url' => '/storage/' . $storagePath,
+                'size' => $fileInfo['file_size'] ?? strlen($fileContent),
+                'original_path' => $telegramFilePath,
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('Telegram downloadAndSaveFile error', [
+                'file_id' => $fileId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return null;
+    }
+
+    /**
      * Handle incoming message
      */
     public function handleMessage(Channel $channel, array $message, bool $isEdited = false): void
@@ -474,7 +587,7 @@ class TelegramService
 
         // Parse message content
         $content = $this->parseMessageContent($message);
-        $attachments = $this->parseAttachments($message);
+        $attachments = $this->parseAttachments($channel, $message);
 
         // Check if message already exists (for edited messages)
         $existingMessage = Message::where('metadata->telegram_message_id', $message['message_id'])
@@ -599,42 +712,72 @@ class TelegramService
         return '';
     }
 
-    protected function parseAttachments(array $message): array
+    protected function parseAttachments(Channel $channel, array $message): array
     {
         $attachments = [];
 
         if (isset($message['photo'])) {
             $photo = end($message['photo']);
-            $attachments[] = [
-                'type' => 'photo',
+            $attachment = [
+                'type' => 'image', // Use 'image' for frontend compatibility
                 'file_id' => $photo['file_id'],
                 'file_unique_id' => $photo['file_unique_id'],
                 'width' => $photo['width'] ?? null,
                 'height' => $photo['height'] ?? null,
             ];
+            
+            // Download and save locally
+            $savedFile = $this->downloadAndSaveFile($channel, $photo['file_id'], 'photo');
+            if ($savedFile) {
+                $attachment['path'] = $savedFile['path'];
+                $attachment['url'] = $savedFile['url'];
+                $attachment['size'] = $savedFile['size'];
+            }
+            
+            $attachments[] = $attachment;
         }
 
         if (isset($message['video'])) {
-            $attachments[] = [
+            $attachment = [
                 'type' => 'video',
                 'file_id' => $message['video']['file_id'],
                 'file_unique_id' => $message['video']['file_unique_id'],
                 'duration' => $message['video']['duration'] ?? null,
                 'file_name' => $message['video']['file_name'] ?? null,
             ];
+            
+            // Download and save locally
+            $savedFile = $this->downloadAndSaveFile($channel, $message['video']['file_id'], 'video');
+            if ($savedFile) {
+                $attachment['path'] = $savedFile['path'];
+                $attachment['url'] = $savedFile['url'];
+                $attachment['size'] = $savedFile['size'];
+            }
+            
+            $attachments[] = $attachment;
         }
 
         if (isset($message['voice'])) {
-            $attachments[] = [
+            $attachment = [
                 'type' => 'voice',
                 'file_id' => $message['voice']['file_id'],
                 'file_unique_id' => $message['voice']['file_unique_id'],
                 'duration' => $message['voice']['duration'] ?? null,
             ];
+            
+            // Download and save locally
+            $savedFile = $this->downloadAndSaveFile($channel, $message['voice']['file_id'], 'voice');
+            if ($savedFile) {
+                $attachment['path'] = $savedFile['path'];
+                $attachment['url'] = $savedFile['url'];
+                $attachment['size'] = $savedFile['size'];
+            }
+            
+            $attachments[] = $attachment;
         }
 
         if (isset($message['audio'])) {
-            $attachments[] = [
+            $attachment = [
                 'type' => 'audio',
                 'file_id' => $message['audio']['file_id'],
                 'file_unique_id' => $message['audio']['file_unique_id'],
@@ -642,26 +785,57 @@ class TelegramService
                 'title' => $message['audio']['title'] ?? null,
                 'performer' => $message['audio']['performer'] ?? null,
             ];
+            
+            // Download and save locally
+            $savedFile = $this->downloadAndSaveFile($channel, $message['audio']['file_id'], 'audio');
+            if ($savedFile) {
+                $attachment['path'] = $savedFile['path'];
+                $attachment['url'] = $savedFile['url'];
+                $attachment['size'] = $savedFile['size'];
+            }
+            
+            $attachments[] = $attachment;
         }
 
         if (isset($message['document'])) {
-            $attachments[] = [
+            $attachment = [
                 'type' => 'document',
                 'file_id' => $message['document']['file_id'],
                 'file_unique_id' => $message['document']['file_unique_id'],
                 'file_name' => $message['document']['file_name'] ?? null,
+                'name' => $message['document']['file_name'] ?? null,
                 'mime_type' => $message['document']['mime_type'] ?? null,
             ];
+            
+            // Download and save locally
+            $savedFile = $this->downloadAndSaveFile($channel, $message['document']['file_id'], 'document');
+            if ($savedFile) {
+                $attachment['path'] = $savedFile['path'];
+                $attachment['url'] = $savedFile['url'];
+                $attachment['size'] = $savedFile['size'];
+            }
+            
+            $attachments[] = $attachment;
         }
 
         if (isset($message['sticker'])) {
-            $attachments[] = [
+            $attachment = [
                 'type' => 'sticker',
                 'file_id' => $message['sticker']['file_id'],
                 'file_unique_id' => $message['sticker']['file_unique_id'],
                 'emoji' => $message['sticker']['emoji'] ?? null,
                 'set_name' => $message['sticker']['set_name'] ?? null,
             ];
+            
+            // Download and save locally (stickers are usually webp)
+            $savedFile = $this->downloadAndSaveFile($channel, $message['sticker']['file_id'], 'sticker');
+            if ($savedFile) {
+                $attachment['path'] = $savedFile['path'];
+                $attachment['url'] = $savedFile['url'];
+                $attachment['size'] = $savedFile['size'];
+            }
+            
+            $attachments[] = $attachment;
         }
 
         if (isset($message['location'])) {
