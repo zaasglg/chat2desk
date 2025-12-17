@@ -322,55 +322,48 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
         router.post(`/chats/${chat.id}/priority`, { priority }, { preserveScroll: true });
     };
 
-    const assignToOperator = async (operatorId: number | null) => {
+    const assignToOperator = (operatorId: number | null) => {
         setAssigning(true);
-        try {
-            const res = await fetch(`/chats/${chat.id}/assign`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+        router.post(`/chats/${chat.id}/assign`, 
+            { operator_id: operatorId },
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    toast?.success('Чат назначен оператору');
+                    setTransferOpen(false);
+                    setSelectedOperator(null);
+                    setSelectedGroup(null);
                 },
-                body: JSON.stringify({ operator_id: operatorId }),
-            });
-            if (res.ok) {
-                toast?.success('Чат назначен оператору');
-                // reload page to reflect assignment (simple approach)
-                window.location.reload();
-            } else {
-                toast?.error('Не удалось назначить оператора');
+                onError: () => {
+                    toast?.error('Не удалось назначить оператора');
+                },
+                onFinish: () => {
+                    setAssigning(false);
+                }
             }
-        } catch (err) {
-            console.error(err);
-            toast?.error('Ошибка при назначении');
-        } finally {
-            setAssigning(false);
-        }
+        );
     };
 
-    const assignToGroup = async (groupId: number | null) => {
+    const assignToGroup = (groupId: number | null) => {
         setAssigning(true);
-        try {
-            const res = await fetch(`/chats/${chat.id}/assign`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+        router.post(`/chats/${chat.id}/assign`, 
+            { operator_group_id: groupId },
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    toast?.success('Чат передан в группу');
+                    setTransferOpen(false);
+                    setSelectedOperator(null);
+                    setSelectedGroup(null);
                 },
-                body: JSON.stringify({ operator_group_id: groupId }),
-            });
-            if (res.ok) {
-                toast?.success('Чат передан в группу');
-                window.location.reload();
-            } else {
-                toast?.error('Не удалось передать в группу');
+                onError: () => {
+                    toast?.error('Не удалось передать в группу');
+                },
+                onFinish: () => {
+                    setAssigning(false);
+                }
             }
-        } catch (err) {
-            console.error(err);
-            toast?.error('Ошибка при передаче в группу');
-        } finally {
-            setAssigning(false);
-        }
+        );
     };
 
     return (

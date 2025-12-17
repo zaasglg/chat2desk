@@ -10,8 +10,8 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
-import { type NavItem } from '@/types';
-import { Link } from '@inertiajs/react';
+import { type NavItem, type SharedData } from '@/types';
+import { Link, usePage } from '@inertiajs/react';
 import {
     LayoutGrid,
     MessageSquare,
@@ -27,11 +27,14 @@ import {
 } from 'lucide-react';
 import AppLogo from './app-logo';
 
-const mainNavItems: NavItem[] = [
+// All navigation items with role restrictions
+// If roles is undefined, item is visible to all
+const allNavItems: (NavItem & { roles?: ('admin' | 'operator' | 'viewer')[] })[] = [
     {
         title: 'Дашборд',
         href: '/dashboard',
         icon: LayoutGrid,
+        roles: ['admin'],
     },
     {
         title: 'Чаты',
@@ -42,31 +45,37 @@ const mainNavItems: NavItem[] = [
         title: 'Клиенты',
         href: '/clients',
         icon: Users,
+        roles: ['admin'],
     },
     {
         title: 'Теги',
         href: '/tags',
         icon: Tags,
+        roles: ['admin'],
     },
     {
         title: 'Автоматизации',
         href: '/automations',
         icon: Workflow,
+        roles: ['admin'],
     },
     {
         title: 'Telegram боты',
         href: '/channels',
         icon: Bot,
+        roles: ['admin'],
     },
     {
         title: 'Операторы',
         href: '/operators',
         icon: UserCog,
+        roles: ['admin'],
     },
     {
         title: 'Быстрые ответы',
         href: '/quick-replies',
         icon: Zap,
+        roles: ['admin'],
     },
     {
         title: 'Рассылки',
@@ -77,6 +86,7 @@ const mainNavItems: NavItem[] = [
         title: 'Аналитика',
         href: '/analytics',
         icon: BarChart3,
+        roles: ['admin'],
     },
 ];
 
@@ -89,6 +99,15 @@ const footerNavItems: NavItem[] = [
 ];
 
 export function AppSidebar() {
+    const { auth } = usePage<SharedData>().props;
+    const userRole = auth.user?.role || 'operator';
+
+    // Filter nav items based on user role
+    const mainNavItems = allNavItems.filter(item => {
+        if (!item.roles) return true; // No restriction, show to all
+        return item.roles.includes(userRole);
+    });
+
     return (
         <Sidebar collapsible="icon" variant="inset">
             <SidebarHeader>
