@@ -131,12 +131,6 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
         return () => clearTimeout(timer);
     }, [searchQuery]);
 
-    useEffect(() => {
-        if (autoScrollRef.current) {
-            scrollToBottom();
-        }
-    }, []);
-
     // Polling для получения новых сообщений
     useEffect(() => {
         const fetchNewMessages = async () => {
@@ -180,9 +174,14 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
         })();
     }, []);
 
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const scrollToBottom = (instant = false) => {
+        messagesEndRef.current?.scrollIntoView({ behavior: instant ? 'instant' : 'smooth' });
     };
+
+    // Initial scroll to bottom without animation
+    useEffect(() => {
+        scrollToBottom(true);
+    }, [chat.id]);
 
     const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
