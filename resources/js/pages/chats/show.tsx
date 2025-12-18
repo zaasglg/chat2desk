@@ -43,7 +43,8 @@ import {
     Search,
     MailOpen,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { Loader2, Image as ImageIcon, FileText, Film, X as XIcon } from 'lucide-react';
 
 interface Props {
     chat: Chat;
@@ -112,6 +113,9 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
     const [assigning, setAssigning] = useState(false);
     const [searchQuery, setSearchQuery] = useState(filters.search || '');
     const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+    const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+    const [uploadProgress, setUploadProgress] = useState<number>(0);
+    const fileInputRef = useRef<HTMLInputElement>(null);
     const toast = useToast();
 
     const breadcrumbs: BreadcrumbItem[] = [
@@ -238,6 +242,7 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
                 const newMessage = await response.json();
                 setMessages((prev) => [...prev, newMessage]);
                 setMessage('');
+                setSelectedFiles([]);
                 // force-scroll to show sent message
                 scrollToBottom();
             }
@@ -246,6 +251,117 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
         } finally {
             setSending(false);
         }
+    };
+
+    // Обработка выбора файлов
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+        
+        const fileArray = Array.from(files);
+        const maxSize = 20 * 1024 * 1024; // 20MB
+        
+        const validFiles = fileArray.filter(file => {
+            if (file.size > maxSize) {
+                toast?.error(`Файл "${file.name}" слишком большой (макс. 20MB)`);
+                return false;
+            }
+            return true;
+        });
+        
+        setSelectedFiles(validFiles);
+        // Очищаем input для возможности повторного выбора
+        if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+        }
+    };
+
+    // Удаление выбранного файла
+    const removeSelectedFile = (index: number) => {
+        setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+    };
+
+    // Отправка сообщения с файлами
+    const handleSendWithFiles = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if ((!message.trim() && selectedFiles.length === 0) || sending) return;
+
+        setSending(true);
+        setUploadProgress(0);
+
+        try {
+            const formData = new FormData();
+            if (message.trim()) {
+                formData.append('content', message);
+            }
+            
+            selectedFiles.forEach((file) => {
+                formData.append('attachments[]', file);
+            });
+
+            const xhr = new XMLHttpRequest();
+            
+            xhr.upload.addEventListener('progress', (e) => {
+                if (e.lengthComputable) {
+                    const percent = Math.round((e.loaded / e.total) * 100);
+                    setUploadProgress(percent);
+                }
+            });
+
+            xhr.addEventListener('load', () => {
+                if (xhr.status === 200 || xhr.status === 201) {
+                    try {
+                        const newMessage = JSON.parse(xhr.responseText);
+                        setMessages((prev) => [...prev, newMessage]);
+                        setMessage('');
+                        setSelectedFiles([]);
+                        scrollToBottom();
+                    } catch (e) {
+                        console.error('Failed to parse response:', e);
+                        toast?.error('Ошибка при обработке ответа');
+                    }
+                } else if (xhr.status === 413) {
+                    toast?.error('Файл слишком большой для сервера');
+                } else {
+                    toast?.error('Ошибка при отправке сообщения');
+                }
+                setSending(false);
+                setUploadProgress(0);
+            });
+
+            xhr.addEventListener('error', () => {
+                toast?.error('Ошибка сети при отправке');
+                setSending(false);
+                setUploadProgress(0);
+            });
+
+            xhr.open('POST', `/chats/${chat.id}/messages`);
+            xhr.setRequestHeader('X-CSRF-TOKEN', document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '');
+            xhr.setRequestHeader('Accept', 'application/json');
+            xhr.send(formData);
+
+        } catch (error) {
+            console.error('Failed to send message:', error);
+            toast?.error('Не удалось отправить сообщение');
+            setSending(false);
+            setUploadProgress(0);
+        }
+    };
+
+    // Получить иконку файла по типу
+    const getFileIcon = (file: File) => {
+        if (file.type.startsWith('image/')) return <ImageIcon className="h-4 w-4" />;
+        if (file.type.startsWith('video/')) return <Film className="h-4 w-4" />;
+        return <FileText className="h-4 w-4" />;
+    };
+
+    // Форматирование размера файла
+    const formatFileSize = (bytes: number) => {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
     };
 
     const toggleTag = async (tag: Tag) => {
@@ -710,8 +826,63 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
 
                     {/* Input - fixed at bottom of chat area */}
                     <div className="flex-shrink-0 bg-background border-t">
-                        <form onSubmit={handleSend} className="flex gap-2 items-center w-full px-4 py-3">
-                            <Button type="button" variant="ghost" size="icon" className="h-10 w-10 rounded-md">
+                        {/* Selected files preview */}
+                        {selectedFiles.length > 0 && (
+                            <div className="px-4 pt-3 pb-2 border-b">
+                                <div className="flex flex-wrap gap-2">
+                                    {selectedFiles.map((file, index) => (
+                                        <div 
+                                            key={index} 
+                                            className="flex items-center gap-2 bg-muted rounded-lg px-3 py-2 text-sm"
+                                        >
+                                            {getFileIcon(file)}
+                                            <span className="truncate max-w-[150px]">{file.name}</span>
+                                            <span className="text-muted-foreground text-xs">
+                                                ({formatFileSize(file.size)})
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => removeSelectedFile(index)}
+                                                className="hover:bg-destructive/20 rounded-full p-0.5"
+                                            >
+                                                <XIcon className="h-3 w-3" />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                                {sending && uploadProgress > 0 && (
+                                    <div className="mt-2">
+                                        <div className="w-full bg-muted rounded-full h-1.5">
+                                            <div 
+                                                className="bg-primary h-1.5 rounded-full transition-all duration-300"
+                                                style={{ width: `${uploadProgress}%` }}
+                                            />
+                                        </div>
+                                        <span className="text-xs text-muted-foreground">Загрузка: {uploadProgress}%</span>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                        
+                        {/* Hidden file input */}
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            multiple
+                            onChange={handleFileSelect}
+                            className="hidden"
+                            accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar"
+                        />
+                        
+                        <form onSubmit={selectedFiles.length > 0 ? handleSendWithFiles : handleSend} className="flex gap-2 items-center w-full px-4 py-3">
+                            <Button 
+                                type="button" 
+                                variant="ghost" 
+                                size="icon" 
+                                className="h-10 w-10 rounded-md"
+                                onClick={() => fileInputRef.current?.click()}
+                                disabled={sending}
+                            >
                                 <Paperclip className="h-4 w-4" />
                             </Button>
 
@@ -725,10 +896,14 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
 
                             <Button
                                 type="submit"
-                                disabled={!message.trim() || sending}
+                                disabled={(!message.trim() && selectedFiles.length === 0) || sending}
                                 className="h-10 w-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center"
                             >
-                                <Send className="h-4 w-4" />
+                                {sending ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                    <Send className="h-4 w-4" />
+                                )}
                             </Button>
                         </form>
                     </div>
