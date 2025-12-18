@@ -367,18 +367,27 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
         );
     };
 
-    const markAsUnread = () => {
-        router.post(`/chats/${chat.id}/mark-unread`, {}, {
-            preserveScroll: true,
-            onSuccess: () => {
+    const markAsUnread = async () => {
+        try {
+            const response = await fetch(`/chats/${chat.id}/mark-unread`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                    'Accept': 'application/json',
+                },
+            });
+            
+            if (response.ok) {
                 toast?.success('Чат помечен как непрочитанный');
-                // Переходим на список чатов, чтобы не сбросить статус непрочитанного
-                router.visit('/chats');
-            },
-            onError: () => {
+                // Перезагружаем страницу через Inertia для обновления списка
+                router.reload({ only: ['chats', 'stats'] });
+            } else {
                 toast?.error('Не удалось пометить чат');
-            },
-        });
+            }
+        } catch (error) {
+            toast?.error('Не удалось пометить чат');
+        }
     };
 
     return (
