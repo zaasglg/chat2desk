@@ -281,6 +281,39 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
         setSelectedFiles(prev => prev.filter((_, i) => i !== index));
     };
 
+    // Обработка вставки из буфера обмена (Ctrl+V)
+    const handlePaste = (e: React.ClipboardEvent) => {
+        const items = e.clipboardData?.items;
+        if (!items) return;
+
+        const imageFiles: File[] = [];
+        const maxSize = 20 * 1024 * 1024; // 20MB
+
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            if (item.type.startsWith('image/')) {
+                const file = item.getAsFile();
+                if (file) {
+                    if (file.size > maxSize) {
+                        toast?.error('Изображение слишком большое (макс. 20MB)');
+                        continue;
+                    }
+                    // Генерируем имя файла с датой
+                    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                    const extension = file.type.split('/')[1] || 'png';
+                    const namedFile = new File([file], `screenshot-${timestamp}.${extension}`, { type: file.type });
+                    imageFiles.push(namedFile);
+                }
+            }
+        }
+
+        if (imageFiles.length > 0) {
+            e.preventDefault(); // Предотвращаем вставку текста
+            setSelectedFiles(prev => [...prev, ...imageFiles]);
+            toast?.success(`Изображение добавлено из буфера обмена`);
+        }
+    };
+
     // Отправка сообщения с файлами
     const handleSendWithFiles = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -889,7 +922,8 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
                             <Input
                                 value={message}
                                 onChange={(e) => setMessage(e.target.value)}
-                                placeholder="Введите сообщение..."
+                                onPaste={handlePaste}
+                                placeholder="Введите сообщение... (Ctrl+V для вставки изображения)"
                                 className="flex-1 rounded-full px-4 py-2"
                                 disabled={sending}
                             />
