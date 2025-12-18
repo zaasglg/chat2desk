@@ -578,7 +578,7 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
                         <div className="relative">
                             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                             <Input
-                                placeholder="Поиск чатов..."
+                                placeholder="Поиск по именам, телефонам, сообщениям и комментариям..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 className="pl-9"
@@ -654,7 +654,7 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
                                                     </div>
                                                     {chatItem.client?.tags && chatItem.client.tags.length > 0 && (
                                                         <div className="flex flex-wrap gap-1 mt-1.5">
-                                                            {chatItem.client.tags.slice(0, 3).map((tag) => (
+                                                            {chatItem.client.tags.map((tag) => (
                                                                 <Badge
                                                                     key={tag.id}
                                                                     variant="secondary"
@@ -664,11 +664,6 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
                                                                     {tag.name}
                                                                 </Badge>
                                                             ))}
-                                                            {chatItem.client.tags.length > 3 && (
-                                                                <Badge variant="secondary" className="text-xs px-1.5 py-0 h-5">
-                                                                    +{chatItem.client.tags.length - 3}
-                                                                </Badge>
-                                                            )}
                                                         </div>
                                                     )}
                                                 </div>

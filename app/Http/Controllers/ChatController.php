@@ -43,10 +43,15 @@ class ChatController extends Controller
         // Search
         if ($request->has('search') && $request->search) {
             $search = $request->search;
-            $query->whereHas('client', function ($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")
-                    ->orWhere('phone', 'like', "%{$search}%")
-                    ->orWhere('email', 'like', "%{$search}%");
+            $query->where(function ($q) use ($search) {
+                $q->whereHas('client', function ($subQ) use ($search) {
+                    $subQ->where('name', 'like', "%{$search}%")
+                        ->orWhere('phone', 'like', "%{$search}%")
+                        ->orWhere('email', 'like', "%{$search}%")
+                        ->orWhere('notes', 'like', "%{$search}%");
+                })->orWhereHas('messages', function ($subQ) use ($search) {
+                    $subQ->where('content', 'like', "%{$search}%");
+                });
             });
         }
 
@@ -149,10 +154,15 @@ class ChatController extends Controller
         // Search
         if ($request->has('search') && $request->search) {
             $search = $request->search;
-            $chatsQuery->whereHas('client', function ($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")
-                    ->orWhere('phone', 'like', "%{$search}%")
-                    ->orWhere('email', 'like', "%{$search}%");
+            $chatsQuery->where(function ($q) use ($search) {
+                $q->whereHas('client', function ($subQ) use ($search) {
+                    $subQ->where('name', 'like', "%{$search}%")
+                        ->orWhere('phone', 'like', "%{$search}%")
+                        ->orWhere('email', 'like', "%{$search}%")
+                        ->orWhere('notes', 'like', "%{$search}%");
+                })->orWhereHas('messages', function ($subQ) use ($search) {
+                    $subQ->where('content', 'like', "%{$search}%");
+                });
             });
         }
 
@@ -298,6 +308,10 @@ class ChatController extends Controller
         // Увеличиваем счетчик непрочитанных
         $chat->update(['unread_count' => max(1, $chat->unread_count)]);
 
-        return back()->with('success', 'Чат помечен как непрочитанный');
+        return response()->json([
+            'success' => true,
+            'message' => 'Чат помечен как непрочитанный',
+            'unread_count' => $chat->unread_count,
+        ]);
     }
 }

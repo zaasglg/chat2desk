@@ -31,7 +31,9 @@ interface Props {
     };
     channelStats: (Channel & { chats_count: number; messages_count: number })[];
     messagesByDay: Record<string, { incoming: number; outgoing: number }>;
+    chatsByDay: Record<string, number>;
     chatsByStatus: Record<string, number>;
+    chatsByTag: Array<{ id: number; name: string; color: string; chats_count: number }>;
     period: string;
 }
 
@@ -50,7 +52,7 @@ const channelIcons: Record<string, string> = {
     web: '🌐',
 };
 
-export default function AnalyticsIndex({ stats, channelStats, messagesByDay, chatsByStatus, period }: Props) {
+export default function AnalyticsIndex({ stats, channelStats, messagesByDay, chatsByDay, chatsByStatus, chatsByTag, period }: Props) {
     const handlePeriodChange = (newPeriod: string) => {
         router.get('/analytics', { period: newPeriod }, { preserveState: true });
     };
@@ -183,6 +185,41 @@ export default function AnalyticsIndex({ stats, channelStats, messagesByDay, cha
                     </Card>
                 </div>
 
+                {/* Chats Timeline */}
+                <Card className="mt-6">
+                    <CardHeader>
+                        <CardTitle>Новые чаты по дням</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="flex items-end gap-2 h-40">
+                            {Object.entries(chatsByDay).map(([date, count]) => {
+                                const maxHeight = Math.max(...Object.values(chatsByDay));
+                                const height = maxHeight > 0 ? (count / maxHeight) * 100 : 0;
+
+                                return (
+                                    <div key={date} className="flex-1 flex flex-col items-center gap-1">
+                                        <div className="w-full flex flex-col justify-end items-center" style={{ height: '100%' }}>
+                                            <span className="text-xs font-medium mb-1">{count}</span>
+                                            <div
+                                                className="w-full bg-blue-500 rounded-t"
+                                                style={{ height: `${height}%` }}
+                                            />
+                                        </div>
+                                        <span className="text-xs text-muted-foreground">
+                                            {new Date(date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
+                                        </span>
+                                    </div>
+                                );
+                            })}
+                            {Object.keys(chatsByDay).length === 0 && (
+                                <div className="flex-1 flex items-center justify-center text-muted-foreground">
+                                    Нет данных за выбранный период
+                                </div>
+                            )}
+                        </div>
+                    </CardContent>
+                </Card>
+
                 {/* Messages Timeline */}
                 <Card className="mt-6">
                     <CardHeader>
@@ -209,7 +246,7 @@ export default function AnalyticsIndex({ stats, channelStats, messagesByDay, cha
                                                 style={{ height: `${(data.incoming / (maxHeight || 1)) * 100}%` }}
                                             />
                                         </div>
-                                        <span className="text-xs text-muted-foreground rotate-45 origin-left">
+                                        <span className="text-xs text-muted-foreground">
                                             {new Date(date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
                                         </span>
                                     </div>
@@ -230,6 +267,40 @@ export default function AnalyticsIndex({ stats, channelStats, messagesByDay, cha
                                 <div className="w-3 h-3 bg-primary rounded" />
                                 <span className="text-sm">Исходящие</span>
                             </div>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                {/* Tags Statistics */}
+                <Card className="mt-6">
+                    <CardHeader>
+                        <CardTitle>Статистика по тегам</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="space-y-3">
+                            {chatsByTag.map((tag) => (
+                                <div key={tag.id} className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <Badge
+                                            variant="secondary"
+                                            style={{ backgroundColor: tag.color + '20', color: tag.color }}
+                                        >
+                                            {tag.name}
+                                        </Badge>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-sm font-medium">{tag.chats_count}</span>
+                                        <span className="text-xs text-muted-foreground">
+                                            {tag.chats_count === 1 ? 'чат' : tag.chats_count < 5 ? 'чата' : 'чатов'}
+                                        </span>
+                                    </div>
+                                </div>
+                            ))}
+                            {chatsByTag.length === 0 && (
+                                <p className="text-center text-muted-foreground py-4">
+                                    Нет данных по тегам
+                                </p>
+                            )}
                         </div>
                     </CardContent>
                 </Card>

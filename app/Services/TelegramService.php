@@ -105,6 +105,21 @@ class TelegramService
     }
 
     /**
+     * Prepare text for sending via Telegram HTML mode
+     * Escapes HTML special characters while preserving newlines
+     */
+    protected function prepareTextForTelegram(string $text): string
+    {
+        // Escape HTML special characters
+        $text = htmlspecialchars($text, ENT_NOQUOTES, 'UTF-8');
+        
+        // Restore newlines - they work in Telegram HTML mode
+        // No need to convert to <br>, \n works natively
+        
+        return $text;
+    }
+
+    /**
      * Send message to Telegram
      */
     public function sendMessage(Channel $channel, int $chatId, string $text, ?array $inlineKeyboard = null): ?array
@@ -117,9 +132,12 @@ class TelegramService
         }
 
         try {
+            // Prepare text for Telegram HTML mode
+            $preparedText = $this->prepareTextForTelegram($text);
+
             $params = [
                 'chat_id' => $chatId,
-                'text' => $text,
+                'text' => $preparedText,
                 'parse_mode' => 'HTML',
             ];
 
@@ -189,7 +207,7 @@ class TelegramService
                 ];
                 
                 if ($caption) {
-                    $params['caption'] = $caption;
+                    $params['caption'] = $this->prepareTextForTelegram($caption);
                     $params['parse_mode'] = 'HTML';
                 }
                 
@@ -213,7 +231,7 @@ class TelegramService
                 ];
                 
                 if ($caption) {
-                    $params['caption'] = $caption;
+                    $params['caption'] = $this->prepareTextForTelegram($caption);
                     $params['parse_mode'] = 'HTML';
                 }
                 
@@ -290,7 +308,7 @@ class TelegramService
                     basename($filePath)
                 )->post("https://api.telegram.org/bot{$botToken}/sendVideo", [
                     'chat_id' => $chatId,
-                    'caption' => $caption ?: null,
+                    'caption' => $caption ? $this->prepareTextForTelegram($caption) : null,
                     'parse_mode' => $caption ? 'HTML' : null,
                 ]);
             } else {
@@ -301,7 +319,7 @@ class TelegramService
                 ];
                 
                 if ($caption) {
-                    $params['caption'] = $caption;
+                    $params['caption'] = $this->prepareTextForTelegram($caption);
                     $params['parse_mode'] = 'HTML';
                 }
 
@@ -371,7 +389,7 @@ class TelegramService
                     basename($filePath)
                 )->post("https://api.telegram.org/bot{$botToken}/sendDocument", [
                     'chat_id' => $chatId,
-                    'caption' => $caption ?: null,
+                    'caption' => $caption ? $this->prepareTextForTelegram($caption) : null,
                     'parse_mode' => $caption ? 'HTML' : null,
                 ]);
             } else {
@@ -382,7 +400,7 @@ class TelegramService
                 ];
                 
                 if ($caption) {
-                    $params['caption'] = $caption;
+                    $params['caption'] = $this->prepareTextForTelegram($caption);
                     $params['parse_mode'] = 'HTML';
                 }
 

@@ -55,16 +55,36 @@ class AnalyticsController extends Controller
                 ];
             });
 
+        // График чатов по дням
+        $chatsByDay = Chat::where('created_at', '>=', $startDate)
+            ->selectRaw('DATE(created_at) as date, COUNT(*) as count')
+            ->groupBy('date')
+            ->orderBy('date')
+            ->pluck('count', 'date');
+
         // Статистика по статусам
         $chatsByStatus = Chat::selectRaw('status, COUNT(*) as count')
             ->groupBy('status')
             ->pluck('count', 'status');
 
+        // Статистика по тегам клиентов
+        $chatsByTag = \DB::table('client_tag')
+            ->join('tags', 'client_tag.tag_id', '=', 'tags.id')
+            ->join('clients', 'client_tag.client_id', '=', 'clients.id')
+            ->join('chats', 'chats.client_id', '=', 'clients.id')
+            ->where('chats.created_at', '>=', $startDate)
+            ->selectRaw('tags.id, tags.name, tags.color, COUNT(DISTINCT chats.id) as chats_count')
+            ->groupBy('tags.id', 'tags.name', 'tags.color')
+            ->orderByDesc('chats_count')
+            ->get();
+
         return Inertia::render('analytics/index', [
             'stats' => $stats,
             'channelStats' => $channelStats,
             'messagesByDay' => $messagesByDay,
+            'chatsByDay' => $chatsByDay,
             'chatsByStatus' => $chatsByStatus,
+            'chatsByTag' => $chatsByTag,
             'period' => $period,
         ]);
     }
