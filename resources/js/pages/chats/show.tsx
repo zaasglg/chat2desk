@@ -41,6 +41,7 @@ import {
     Plus,
     X,
     Search,
+    MailOpen,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
@@ -366,6 +367,18 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
         );
     };
 
+    const markAsUnread = () => {
+        router.post(`/chats/${chat.id}/mark-unread`, {}, {
+            preserveScroll: true,
+            onSuccess: () => {
+                toast?.success('Чат помечен как непрочитанный');
+            },
+            onError: () => {
+                toast?.error('Не удалось пометить чат');
+            },
+        });
+    };
+
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={chat.client?.name || `Чат #${chat.id}`} />
@@ -657,6 +670,18 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
                                             </div>
                                         </PopoverContent>
                                     </Popover>
+                                    
+                                    {/* Mark as Unread button */}
+                                    <Button 
+                                        variant="outline" 
+                                        size="sm" 
+                                        className="h-8"
+                                        onClick={markAsUnread}
+                                        title="Пометить непрочитанным"
+                                    >
+                                        <MailOpen className="h-4 w-4 mr-1" />
+                                        Непрочитанное
+                                    </Button>
                                 </div>
                             </div>
                         </div>

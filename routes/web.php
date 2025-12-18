@@ -34,6 +34,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('chats/{chat}/assign', [ChatController::class, 'assign'])->name('chats.assign');
     Route::post('chats/{chat}/status', [ChatController::class, 'updateStatus'])->name('chats.status');
     Route::post('chats/{chat}/priority', [ChatController::class, 'updatePriority'])->name('chats.priority');
+    Route::post('chats/{chat}/mark-unread', [ChatController::class, 'markAsUnread'])->name('chats.mark-unread');
 
     // Messages
     Route::get('chats/{chat}/messages', [MessageController::class, 'index'])->name('messages.index');

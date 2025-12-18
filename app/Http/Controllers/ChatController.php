@@ -282,4 +282,22 @@ class ChatController extends Controller
 
         return back()->with('success', 'Приоритет обновлен');
     }
+
+    public function markAsUnread(Chat $chat)
+    {
+        // Помечаем последнее входящее сообщение как непрочитанное
+        $lastIncomingMessage = $chat->messages()
+            ->where('direction', 'incoming')
+            ->latest()
+            ->first();
+
+        if ($lastIncomingMessage) {
+            $lastIncomingMessage->update(['read_at' => null, 'status' => 'delivered']);
+        }
+
+        // Увеличиваем счетчик непрочитанных
+        $chat->update(['unread_count' => max(1, $chat->unread_count)]);
+
+        return back()->with('success', 'Чат помечен как непрочитанный');
+    }
 }
