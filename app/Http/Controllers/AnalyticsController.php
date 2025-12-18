@@ -13,36 +13,48 @@ class AnalyticsController extends Controller
     public function index(Request $request)
     {
         $period = $request->get('period', '7d');
-        $startDate = match ($period) {
-            '24h' => now()->subDay(),
-            '7d' => now()->subDays(7),
-            '30d' => now()->subDays(30),
-            '90d' => now()->subDays(90),
-            default => now()->subDays(7),
-        };
+        $startDateParam = $request->get('start_date');
+        $endDateParam = $request->get('end_date');
+        
+        // Если переданы кастомные даты
+        if ($startDateParam && $endDateParam) {
+            $startDate = \Carbon\Carbon::parse($startDateParam)->startOfDay();
+            $endDate = \Carbon\Carbon::parse($endDateParam)->endOfDay();
+            $period = 'custom';
+        } else {
+            $endDate = now();
+            $startDate = match ($period) {
+                '24h' => now()->subDay(),
+                '7d' => now()->subDays(7),
+                '30d' => now()->subDays(30),
+                '90d' => now()->subDays(90),
+                default => now()->subDays(7),
+            };
+        }
 
         // Общая статистика
         $stats = [
-            'total_chats' => Chat::where('created_at', '>=', $startDate)->count(),
-            'total_messages' => Message::where('created_at', '>=', $startDate)->count(),
-            'incoming_messages' => Message::where('created_at', '>=', $startDate)->where('direction', 'incoming')->count(),
-            'outgoing_messages' => Message::where('created_at', '>=', $startDate)->where('direction', 'outgoing')->count(),
-            'resolved_chats' => Chat::where('created_at', '>=', $startDate)->where('status', 'resolved')->count(),
-            'avg_response_time' => $this->calculateAvgResponseTime($startDate),
+            'total_chats' => Chat::where('created_at', '>=', $startDate)->where('created_at', '<=', $endDate)->count(),
+            'total_messages' => Message::where('created_at', '>=', $startDate)->where('created_at', '<=', $endDate)->count(),
+            'incoming_messages' => Message::where('created_at', '>=', $startDate)->where('created_at', '<=', $endDate)->where('direction', 'incoming')->count(),
+            'outgoing_messages' => Message::where('created_at', '>=', $startDate)->where('created_at', '<=', $endDate)->where('direction', 'outgoing')->count(),
+            'resolved_chats' => Chat::where('created_at', '>=', $startDate)->where('created_at', '<=', $endDate)->where('status', 'resolved')->count(),
+            'avg_response_time' => $this->calculateAvgResponseTime($startDate, $endDate),
         ];
 
         // Статистика по каналам
         $channelStats = Channel::withCount([
-            'chats' => function ($q) use ($startDate) {
-                $q->where('created_at', '>=', $startDate);
+            'chats' => function ($q) use ($startDate, $endDate) {
+                $q->where('created_at', '>=', $startDate)->where('created_at', '<=', $endDate);
             },
-            'messages' => function ($q) use ($startDate) {
-                $q->where('created_at', '>=', $startDate);
+            'messages' => function ($q) use ($startDate, $endDate) {
+                $q->where('created_at', '>=', $startDate)->where('created_at', '<=', $endDate);
             },
         ])->get();
 
         // График сообщений по дням
         $messagesByDay = Message::where('created_at', '>=', $startDate)
+            ->where('created_at', '<=', $endDate)
             ->selectRaw('DATE(created_at) as date, direction, COUNT(*) as count')
             ->groupBy('date', 'direction')
             ->orderBy('date')
@@ -57,6 +69,7 @@ class AnalyticsController extends Controller
 
         // График чатов по дням
         $chatsByDay = Chat::where('created_at', '>=', $startDate)
+            ->where('created_at', '<=', $endDate)
             ->selectRaw('DATE(created_at) as date, COUNT(*) as count')
             ->groupBy('date')
             ->orderBy('date')
@@ -73,6 +86,7 @@ class AnalyticsController extends Controller
             ->join('clients', 'client_tag.client_id', '=', 'clients.id')
             ->join('chats', 'chats.client_id', '=', 'clients.id')
             ->where('chats.created_at', '>=', $startDate)
+            ->where('chats.created_at', '<=', $endDate)
             ->selectRaw('tags.id, tags.name, tags.color, COUNT(DISTINCT chats.id) as chats_count')
             ->groupBy('tags.id', 'tags.name', 'tags.color')
             ->orderByDesc('chats_count')
@@ -86,15 +100,22 @@ class AnalyticsController extends Controller
             'chatsByStatus' => $chatsByStatus,
             'chatsByTag' => $chatsByTag,
             'period' => $period,
+            'startDate' => $startDate->format('Y-m-d'),
+            'endDate' => $endDate->format('Y-m-d'),
         ]);
     }
 
-    private function calculateAvgResponseTime($startDate)
+    private function calculateAvgResponseTime($startDate, $endDate = null)
     {
         // Упрощенный расчет среднего времени ответа
-        $chats = Chat::where('created_at', '>=', $startDate)
-            ->whereNotNull('operator_id')
-            ->with(['messages' => function ($q) {
+        $query = Chat::where('created_at', '>=', $startDate)
+            ->whereNotNull('operator_id');
+        
+        if ($endDate) {
+            $query->where('created_at', '<=', $endDate);
+        }
+        
+        $chats = $query->with(['messages' => function ($q) {
                 $q->orderBy('created_at', 'asc')->limit(2);
             }])
             ->get();

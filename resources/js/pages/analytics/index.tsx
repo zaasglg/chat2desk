@@ -8,9 +8,12 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { DateRangePicker } from '@/components/ui/date-range-picker';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem, type Channel } from '@/types';
 import { Head, router } from '@inertiajs/react';
+import { DateRange } from 'react-day-picker';
+import { useState } from 'react';
 import {
     MessageSquare,
     ArrowDownLeft,
@@ -35,6 +38,8 @@ interface Props {
     chatsByStatus: Record<string, number>;
     chatsByTag: Array<{ id: number; name: string; color: string; chats_count: number }>;
     period: string;
+    startDate: string;
+    endDate: string;
 }
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -52,28 +57,55 @@ const channelIcons: Record<string, string> = {
     web: '🌐',
 };
 
-export default function AnalyticsIndex({ stats, channelStats, messagesByDay, chatsByDay, chatsByStatus, chatsByTag, period }: Props) {
+export default function AnalyticsIndex({ stats, channelStats, messagesByDay, chatsByDay, chatsByStatus, chatsByTag, period, startDate, endDate }: Props) {
+    const [dateRange, setDateRange] = useState<DateRange | undefined>(
+        period === 'custom' ? {
+            from: new Date(startDate),
+            to: new Date(endDate),
+        } : undefined
+    );
+
     const handlePeriodChange = (newPeriod: string) => {
+        setDateRange(undefined);
         router.get('/analytics', { period: newPeriod }, { preserveState: true });
+    };
+
+    const handleDateRangeChange = (range: DateRange | undefined) => {
+        setDateRange(range);
+        if (range?.from && range?.to) {
+            const startStr = range.from.toISOString().split('T')[0];
+            const endStr = range.to.toISOString().split('T')[0];
+            router.get('/analytics', { 
+                start_date: startStr, 
+                end_date: endStr 
+            }, { preserveState: true });
+        }
     };
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Аналитика" />
             <div className="p-6">
-                <div className="mb-6 flex items-center justify-between">
+                <div className="mb-6 flex items-center justify-between flex-wrap gap-4">
                     <h1 className="text-2xl font-bold">Аналитика</h1>
-                    <Select value={period} onValueChange={handlePeriodChange}>
-                        <SelectTrigger className="w-40">
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="24h">24 часа</SelectItem>
-                            <SelectItem value="7d">7 дней</SelectItem>
-                            <SelectItem value="30d">30 дней</SelectItem>
-                            <SelectItem value="90d">90 дней</SelectItem>
-                        </SelectContent>
-                    </Select>
+                    <div className="flex items-center gap-4 flex-wrap">
+                        <DateRangePicker 
+                            value={dateRange}
+                            onChange={handleDateRangeChange}
+                            placeholder="Выберите период"
+                        />
+                        <Select value={period === 'custom' ? '' : period} onValueChange={handlePeriodChange}>
+                            <SelectTrigger className="w-40">
+                                <SelectValue placeholder="Быстрый выбор" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="24h">24 часа</SelectItem>
+                                <SelectItem value="7d">7 дней</SelectItem>
+                                <SelectItem value="30d">30 дней</SelectItem>
+                                <SelectItem value="90d">90 дней</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
                 </div>
 
                 {/* Main Stats */}
