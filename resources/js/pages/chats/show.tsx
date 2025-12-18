@@ -372,6 +372,8 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
             preserveScroll: true,
             onSuccess: () => {
                 toast?.success('Чат помечен как непрочитанный');
+                // Переходим на список чатов, чтобы не сбросить статус непрочитанного
+                router.visit('/chats');
             },
             onError: () => {
                 toast?.error('Не удалось пометить чат');
