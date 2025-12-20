@@ -62,6 +62,7 @@ class AnalyticsController extends Controller
         ])->get();
 
         // График сообщений по дням
+        // График сообщений по дням
         $messagesByDay = Message::where('created_at', '>=', $startDate)
             ->where('created_at', '<=', $endDate)
             ->selectRaw('DATE(created_at) as date, direction, COUNT(*) as count')
@@ -73,12 +74,12 @@ class AnalyticsController extends Controller
                 return [
                     'incoming' => $items->where('direction', 'incoming')->first()?->count ?? 0,
                     'outgoing' => $items->where('direction', 'outgoing')->first()?->count ?? 0,
-                ]; (считаем уникальные чаты по сообщениям)
+                ];
+            });
+
+        // График чатов по дням (считаем уникальные чаты по сообщениям)
         $chatsByDay = Message::whereBetween('created_at', [$startDate, $endDate])
-            ->selectRaw('DATE(created_at) as date, COUNT(DISTINCT chat_id
-        $chatsByDay = Chat::where('created_at', '>=', $startDate)
-            ->where('created_at', '<=', $endDate)
-            ->selectRaw('DATE(created_at) as date, COUNT(*) as count')
+            ->selectRaw('DATE(created_at) as date, COUNT(DISTINCT chat_id) as count')
             ->groupBy('date')
             ->orderBy('date')
             ->pluck('count', 'date');
