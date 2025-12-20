@@ -89,14 +89,14 @@ class AnalyticsController extends Controller
             ->groupBy('status')
             ->pluck('count', 'status');
 
-        // Статистика по тегам клиентов
-        $chatsByTag = \DB::table('clien (считаем чаты с сообщениями в периоде)
+        // Статистика по тегам клиентов (считаем чаты с сообщениями в периоде)
         $chatsByTag = \DB::table('client_tag')
             ->join('tags', 'client_tag.tag_id', '=', 'tags.id')
             ->join('clients', 'client_tag.client_id', '=', 'clients.id')
             ->join('chats', 'chats.client_id', '=', 'clients.id')
             ->join('messages', 'messages.chat_id', '=', 'chats.id')
-            ->whereBetween('messages.created_at', [$startDate, $endDate]r, COUNT(DISTINCT chats.id) as chats_count')
+            ->whereBetween('messages.created_at', [$startDate, $endDate])
+            ->selectRaw('tags.id, tags.name, tags.color, COUNT(DISTINCT chats.id) as chats_count')
             ->groupBy('tags.id', 'tags.name', 'tags.color')
             ->orderByDesc('chats_count')
             ->get();
