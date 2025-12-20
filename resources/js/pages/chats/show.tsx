@@ -42,6 +42,7 @@ import {
     X,
     Search,
     MailOpen,
+    Smile,
 } from 'lucide-react';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Loader2, Image as ImageIcon, FileText, Film, X as XIcon } from 'lucide-react';
@@ -117,6 +118,8 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
     const [uploadProgress, setUploadProgress] = useState<number>(0);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [tagSearchQuery, setTagSearchQuery] = useState('');
+    const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
     const toast = useToast();
 
     const breadcrumbs: BreadcrumbItem[] = [
@@ -443,6 +446,38 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
             console.error('Failed to remove tag:', error);
             setClientTags([...newTags, tag]);
         }
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        // Ctrl+Enter or Cmd+Enter отправляет сообщение
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            const form = e.currentTarget.form;
+            if (form) {
+                form.requestSubmit();
+            }
+        }
+        // Просто Enter делает перенос строки (поведение по умолчанию)
+    };
+
+    const insertEmoji = (emoji: string) => {
+        const textarea = textareaRef.current;
+        if (!textarea) return;
+
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const text = message;
+        const newText = text.substring(0, start) + emoji + text.substring(end);
+        
+        setMessage(newText);
+        setEmojiPickerOpen(false);
+        
+        // Возвращаем фокус и устанавливаем курсор после эмодзи
+        setTimeout(() => {
+            textarea.focus();
+            const newPosition = start + emoji.length;
+            textarea.setSelectionRange(newPosition, newPosition);
+        }, 0);
     };
 
     const saveNotes = async () => {
@@ -953,31 +988,71 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
                             accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar"
                         />
                         
-                        <form onSubmit={selectedFiles.length > 0 ? handleSendWithFiles : handleSend} className="flex gap-2 items-center w-full px-4 py-3">
+                        <form onSubmit={selectedFiles.length > 0 ? handleSendWithFiles : handleSend} className="flex gap-2 items-end w-full px-4 py-3">
                             <Button 
                                 type="button" 
                                 variant="ghost" 
                                 size="icon" 
-                                className="h-10 w-10 rounded-md"
+                                className="h-10 w-10 rounded-md flex-shrink-0"
                                 onClick={() => fileInputRef.current?.click()}
                                 disabled={sending}
                             >
                                 <Paperclip className="h-4 w-4" />
                             </Button>
 
-                            <Input
+                            <Popover open={emojiPickerOpen} onOpenChange={setEmojiPickerOpen}>
+                                <PopoverTrigger asChild>
+                                    <Button 
+                                        type="button" 
+                                        variant="ghost" 
+                                        size="icon" 
+                                        className="h-10 w-10 rounded-md flex-shrink-0"
+                                        disabled={sending}
+                                    >
+                                        <Smile className="h-4 w-4" />
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-80 p-2" align="start">
+                                    <div className="grid grid-cols-8 gap-1 max-h-64 overflow-y-auto">
+                                        {['😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '🙃', '😉', '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '😚', '😙', '🥲', '😋', '😛', '😜', '🤪', '😝', '🤑', '🤗', '🤭', '🤫', '🤔', '🤐', '🤨', '😐', '😑', '😶', '😏', '😒', '🙄', '😬', '🤥', '😌', '😔', '😪', '🤤', '😴', '😷', '🤒', '🤕', '🤢', '🤮', '🤧', '🥵', '🥶', '😶‍🌫️', '🥴', '😵', '😵‍💫', '🤯', '🤠', '🥳', '🥸', '😎', '🤓', '🧐', '😕', '😟', '🙁', '☹️', '😮', '😯', '😲', '😳', '🥺', '😦', '😧', '😨', '😰', '😥', '😢', '😭', '😱', '😖', '😣', '😞', '😓', '😩', '😫', '🥱', '😤', '😡', '😠', '🤬', '😈', '👿', '💀', '☠️', '💩', '🤡', '👹', '👺', '👻', '👽', '👾', '🤖', '😺', '😸', '😹', '😻', '😼', '😽', '🙀', '😿', '😾', '👋', '🤚', '🖐', '✋', '🖖', '👌', '🤌', '🤏', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '🖕', '👇', '☝️', '👍', '👎', '✊', '👊', '🤛', '🤜', '👏', '🙌', '👐', '🤲', '🤝', '🙏', '✍️', '💅', '🤳', '💪', '🦾', '🦿', '🦵', '🦶', '👂', '🦻', '👃', '🧠', '🫀', '🫁', '🦷', '🦴', '👀', '👁', '👅', '👄', '💋', '🩸', '❤️', '🧡', '💛', '💚', '💙', '💜', '🤎', '🖤', '🤍', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '☮️', '✝️', '☪️', '🕉', '☸️', '✡️', '🔯', '🕎', '☯️', '☦️', '🛐', '⛎', '♈', '♉', '♊', '♋', '♌', '♍', '♎', '♏', '♐', '♑', '♒', '♓', '🆔', '⚛️', '🉑', '☢️', '☣️', '📴', '📳', '🈶', '🈚', '🈸', '🈺', '🈷️', '✴️', '🆚', '💮', '🉐', '㊙️', '㊗️', '🈴', '🈵', '🈹', '🈲', '🅰️', '🅱️', '🆎', '🆑', '🅾️', '🆘', '❌', '⭕', '🛑', '⛔', '📛', '🚫', '💯', '💢', '♨️', '🚷', '🚯', '🚳', '🚱', '🔞', '📵', '🚭', '❗', '❕', '❓', '❔', '‼️', '⁉️', '🔅', '🔆', '〽️', '⚠️', '🚸', '🔱', '⚜️', '🔰', '♻️', '✅', '🈯', '💹', '❇️', '✳️', '❎', '🌐', '💠', '🔷', '🔶', '🔸', '🔹', '🔺', '🔻', '💧', '🔲', '🔳', '🎉', '🎊', '🎈', '🎁', '🎀', '🎂', '🎄', '🎆', '🎇', '✨', '🎃', '👻', '🎅', '🤶', '🧑‍🎄', '🎍', '🎎', '🎏', '🎐', '🎑', '🧧', '🎖', '🏆', '🏅', '🥇', '🥈', '🥉', '⚽', '⚾', '🥎', '🏀', '🏐', '🏈', '🏉', '🎾', '🥏', '🎳', '🏏', '🏑', '🏒', '🥍', '🏓', '🏸', '🥊', '🥋', '🥅', '⛳', '⛸', '🎣', '🤿', '🎽', '🎿', '🛷', '🥌', '👍', '👎', '👌', '✌️', '🤞', '🤝', '👏', '🙌', '🙏', '💪', '🦾', '🤳', '💅', '🧠', '❤️', '💔', '💯', '✅', '❌', '⭐', '🌟', '✨', '💫', '🔥', '💥', '💢', '💦', '💨', '🎉', '🎊'].map((emoji) => (
+                                            <button
+                                                key={emoji}
+                                                type="button"
+                                                onClick={() => insertEmoji(emoji)}
+                                                className="text-2xl hover:bg-accent rounded p-1 transition-colors"
+                                            >
+                                                {emoji}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </PopoverContent>
+                            </Popover>
+
+                            <Textarea
+                                ref={textareaRef}
                                 value={message}
                                 onChange={(e) => setMessage(e.target.value)}
+                                onKeyDown={handleKeyDown}
                                 onPaste={handlePaste}
-                                placeholder="Введите сообщение... (Ctrl+V для вставки изображения)"
-                                className="flex-1 rounded-full px-4 py-2"
+                                placeholder="Введите сообщение... (Ctrl+Enter для отправки)"
+                                className="flex-1 min-h-[40px] max-h-[200px] resize-none py-2 px-4"
                                 disabled={sending}
+                                rows={1}
+                                style={{ 
+                                    height: 'auto',
+                                    minHeight: '40px',
+                                }}
+                                onInput={(e) => {
+                                    const target = e.target as HTMLTextAreaElement;
+                                    target.style.height = 'auto';
+                                    target.style.height = Math.min(target.scrollHeight, 200) + 'px';
+                                }}
                             />
 
                             <Button
                                 type="submit"
                                 disabled={(!message.trim() && selectedFiles.length === 0) || sending}
-                                className="h-10 w-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center"
+                                className="h-10 w-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center flex-shrink-0"
                             >
                                 {sending ? (
                                     <Loader2 className="h-4 w-4 animate-spin" />

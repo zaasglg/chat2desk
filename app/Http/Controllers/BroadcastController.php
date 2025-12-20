@@ -17,6 +17,7 @@ class BroadcastController extends Controller
             'channels' => \App\Models\Channel::all()->map(function($c){
                 return ['id' => $c->id, 'name' => $c->name, 'type' => $c->type];
             }),
+            'tags' => \App\Models\Tag::all(),
         ]);
     }
 
@@ -25,14 +26,35 @@ class BroadcastController extends Controller
         $data = $request->validate([
             'content' => 'required|string',
             'channel_id' => 'nullable|exists:channels,id',
+            'has_tag_ids' => 'nullable|array',
+            'has_tag_ids.*' => 'exists:tags,id',
+            'not_has_tag_ids' => 'nullable|array',
+            'not_has_tag_ids.*' => 'exists:tags,id',
         ]);
 
         $channelFilter = $data['channel_id'] ?? null;
+        $hasTagIds = $data['has_tag_ids'] ?? [];
+        $notHasTagIds = $data['not_has_tag_ids'] ?? [];
 
         // Query chats that have a channel and a client
-        $query = Chat::with('channel')->whereNotNull('client_id');
+        $query = Chat::with('channel', 'client.tags')->whereNotNull('client_id');
         if ($channelFilter) {
             $query->where('channel_id', $channelFilter);
+        }
+
+        // Apply tag filters
+        if (!empty($hasTagIds)) {
+            // Клиенты, у которых есть хотя бы один из выбранных тегов
+            $query->whereHas('client.tags', function($q) use ($hasTagIds) {
+                $q->whereIn('tags.id', $hasTagIds);
+            });
+        }
+        
+        if (!empty($notHasTagIds)) {
+            // Клиенты, у которых нет ни одного из выбранных тегов
+            $query->whereDoesntHave('client.tags', function($q) use ($notHasTagIds) {
+                $q->whereIn('tags.id', $notHasTagIds);
+            });
         }
 
         $sent = 0;
