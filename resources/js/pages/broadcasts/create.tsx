@@ -13,8 +13,8 @@ import {
 import AppLayout from '@/layouts/app-layout';
 import { Head, router, useForm } from '@inertiajs/react';
 import { BreadcrumbItem, Tag } from '@/types';
-import { ArrowLeft, Search } from 'lucide-react';
-import { useState } from 'react';
+import { ArrowLeft, Search, Image as ImageIcon, X } from 'lucide-react';
+import { useState, useRef } from 'react';
 
 interface Props {
     channels: { id: number; name: string; type: string }[];
@@ -31,18 +31,46 @@ export default function BroadcastCreate({ channels, tags }: Props) {
         channel_id: '',
         has_tag_ids: [] as number[],
         not_has_tag_ids: [] as number[],
+        image: null as File | null,
     });
     const [result, setResult] = useState<string | null>(null);
     const [hasTagSearch, setHasTagSearch] = useState('');
     const [notHasTagSearch, setNotHasTagSearch] = useState('');
+    const [imagePreview, setImagePreview] = useState<string | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         post('/broadcasts', {
             onSuccess: () => {
                 setResult('Рассылка отправлена');
+                setImagePreview(null);
             },
         });
+    };
+
+    const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            if (file.type.startsWith('image/')) {
+                setData('image', file);
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    setImagePreview(reader.result as string);
+                };
+                reader.readAsDataURL(file);
+            } else {
+                alert('Пожалуйста, выберите изображение');
+            }
+        }
+    };
+
+    const removeImage = () => {
+        setData('image', null);
+        setImagePreview(null);
+        if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+        }
     };
 
     const toggleHasTag = (tagId: number) => {
@@ -190,8 +218,43 @@ export default function BroadcastCreate({ channels, tags }: Props) {
                         </div>
                     </div>
 
-                    <div>
-                        <label className="text-sm text-muted-foreground">Текст рассылки</label>
+                    <div>                        <label className="text-sm text-muted-foreground mb-2 block">Изображение (опционально)</label>
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/*"
+                            onChange={handleImageSelect}
+                            className="hidden"
+                        />
+                        {imagePreview ? (
+                            <div className="relative inline-block">
+                                <img 
+                                    src={imagePreview} 
+                                    alt="Preview" 
+                                    className="max-w-xs max-h-48 rounded border"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={removeImage}
+                                    className="absolute top-2 right-2 bg-destructive text-destructive-foreground rounded-full p-1 hover:bg-destructive/90"
+                                >
+                                    <X className="h-4 w-4" />
+                                </button>
+                            </div>
+                        ) : (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => fileInputRef.current?.click()}
+                                className="w-full sm:w-auto"
+                            >
+                                <ImageIcon className="h-4 w-4 mr-2" />
+                                Выбрать изображение
+                            </Button>
+                        )}
+                    </div>
+
+                    <div>                        <label className="text-sm text-muted-foreground">Текст рассылки</label>
                         <Textarea
                             value={data.content}
                             onChange={(e) => setData('content', e.target.value)}

@@ -30,11 +30,18 @@ class BroadcastController extends Controller
             'has_tag_ids.*' => 'exists:tags,id',
             'not_has_tag_ids' => 'nullable|array',
             'not_has_tag_ids.*' => 'exists:tags,id',
+            'image' => 'nullable|image|max:10240', // max 10MB
         ]);
 
         $channelFilter = $data['channel_id'] ?? null;
         $hasTagIds = $data['has_tag_ids'] ?? [];
         $notHasTagIds = $data['not_has_tag_ids'] ?? [];
+        
+        // Handle image upload
+        $imagePath = null;
+        if ($request->hasFile('image')) {
+            $imagePath = $request->file('image')->store('broadcast_images', 'public');
+        }
 
         // Query chats that have a channel and a client
         $query = Chat::with('channel', 'client.tags')->whereNotNull('client_id');
@@ -61,7 +68,7 @@ class BroadcastController extends Controller
         $failed = 0;
 
         // Process in chunks to avoid memory issues
-        $query->chunk(200, function($chats) use ($data, $telegramService, &$sent, &$failed) {
+        $query->chunk(200, function($chats) use ($data, $telegramService, $imagePath, &$sent, &$failed) {
             foreach ($chats as $chat) {
                 $channel = $chat->channel;
                 // For now, only support Telegram broadcasts (channels with telegram bot token and chat metadata)
@@ -69,12 +76,13 @@ class BroadcastController extends Controller
                 $telegramChatId = $metadata['telegram_chat_id'] ?? null;
 
                 // Create message record first (pending)
+                $messageType = $imagePath ? 'image' : 'text';
                 $message = Message::create([
                     'chat_id' => $chat->id,
                     'channel_id' => $chat->channel_id,
                     'operator_id' => null,
                     'direction' => 'outgoing',
-                    'type' => 'text',
+                    'type' => $messageType,
                     'content' => $data['content'],
                     'status' => 'pending',
                     'metadata' => ['sent_by' => 'broadcast'],
@@ -83,12 +91,23 @@ class BroadcastController extends Controller
                 $ok = false;
 
                 if ($channel && $channel->type === 'telegram' && $telegramChatId) {
-                    $result = $telegramService->sendMessage($channel, $telegramChatId, $data['content']);
+                    if ($imagePath) {
+                        // Отправляем фото с подписью
+                        $result = $telegramService->sendPhoto($channel, $telegramChatId, $imagePath, $data['content']);
+                    } else {
+                        // Отправляем только текст
+                        $result = $telegramService->sendMessage($channel, $telegramChatId, $data['content']);
+                    }
+                    
                     if ($result) {
                         $ok = true;
                         $message->update([
                             'status' => 'sent',
-                            'metadata' => array_merge($message->metadata ?? [], ['telegram_message_id' => $result['message_id'] ?? null, 'sent_by' => 'broadcast']),
+                            'metadata' => array_merge($message->metadata ?? [], [
+                                'telegram_message_id' => $result['message_id'] ?? null, 
+                                'sent_by' => 'broadcast',
+                                'image_path' => $imagePath,
+                            ]),
                         ]);
                         $sent++;
                     }
