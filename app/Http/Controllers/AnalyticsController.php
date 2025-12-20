@@ -34,21 +34,30 @@ class AnalyticsController extends Controller
 
         // Общая статистика
         $stats = [
-            'total_chats' => Chat::where('created_at', '>=', $startDate)->where('created_at', '<=', $endDate)->count(),
-            'total_messages' => Message::where('created_at', '>=', $startDate)->where('created_at', '<=', $endDate)->count(),
-            'incoming_messages' => Message::where('created_at', '>=', $startDate)->where('created_at', '<=', $endDate)->where('direction', 'incoming')->count(),
-            'outgoing_messages' => Message::where('created_at', '>=', $startDate)->where('created_at', '<=', $endDate)->where('direction', 'outgoing')->count(),
-            'resolved_chats' => Chat::where('created_at', '>=', $startDate)->where('created_at', '<=', $endDate)->where('status', 'resolved')->count(),
+            // Считаем чаты, у которых есть сообщения в выбранном периоде
+            'total_chats' => Chat::whereHas('messages', function ($q) use ($startDate, $endDate) {
+                $q->whereBetween('created_at', [$startDate, $endDate]);
+            })->count(),
+            'total_messages' => Message::whereBetween('created_at', [$startDate, $endDate])->count(),
+            'incoming_messages' => Message::whereBetween('created_at', [$startDate, $endDate])->where('direction', 'incoming')->count(),
+            'outgoing_messages' => Message::whereBetween('created_at', [$startDate, $endDate])->where('direction', 'outgoing')->count(),
+            // Считаем чаты, которые были решены в выбранном периоде
+            'resolved_chats' => Chat::where('status', 'resolved')
+                ->whereBetween('updated_at', [$startDate, $endDate])
+                ->count(),
             'avg_response_time' => $this->calculateAvgResponseTime($startDate, $endDate),
         ];
 
         // Статистика по каналам
         $channelStats = Channel::withCount([
             'chats' => function ($q) use ($startDate, $endDate) {
-                $q->where('created_at', '>=', $startDate)->where('created_at', '<=', $endDate);
+                // Считаем чаты, у которых есть сообщения в выбранном периоде
+                $q->whereHas('messages', function ($mq) use ($startDate, $endDate) {
+                    $mq->whereBetween('created_at', [$startDate, $endDate]);
+                });
             },
             'messages' => function ($q) use ($startDate, $endDate) {
-                $q->where('created_at', '>=', $startDate)->where('created_at', '<=', $endDate);
+                $q->whereBetween('created_at', [$startDate, $endDate]);
             },
         ])->get();
 
@@ -64,10 +73,9 @@ class AnalyticsController extends Controller
                 return [
                     'incoming' => $items->where('direction', 'incoming')->first()?->count ?? 0,
                     'outgoing' => $items->where('direction', 'outgoing')->first()?->count ?? 0,
-                ];
-            });
-
-        // График чатов по дням
+                ]; (считаем уникальные чаты по сообщениям)
+        $chatsByDay = Message::whereBetween('created_at', [$startDate, $endDate])
+            ->selectRaw('DATE(created_at) as date, COUNT(DISTINCT chat_id
         $chatsByDay = Chat::where('created_at', '>=', $startDate)
             ->where('created_at', '<=', $endDate)
             ->selectRaw('DATE(created_at) as date, COUNT(*) as count')
@@ -81,13 +89,13 @@ class AnalyticsController extends Controller
             ->pluck('count', 'status');
 
         // Статистика по тегам клиентов
+        $chatsByTag = \DB::table('clien (считаем чаты с сообщениями в периоде)
         $chatsByTag = \DB::table('client_tag')
             ->join('tags', 'client_tag.tag_id', '=', 'tags.id')
             ->join('clients', 'client_tag.client_id', '=', 'clients.id')
             ->join('chats', 'chats.client_id', '=', 'clients.id')
-            ->where('chats.created_at', '>=', $startDate)
-            ->where('chats.created_at', '<=', $endDate)
-            ->selectRaw('tags.id, tags.name, tags.color, COUNT(DISTINCT chats.id) as chats_count')
+            ->join('messages', 'messages.chat_id', '=', 'chats.id')
+            ->whereBetween('messages.created_at', [$startDate, $endDate]r, COUNT(DISTINCT chats.id) as chats_count')
             ->groupBy('tags.id', 'tags.name', 'tags.color')
             ->orderByDesc('chats_count')
             ->get();

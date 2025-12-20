@@ -116,6 +116,7 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
     const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
     const [uploadProgress, setUploadProgress] = useState<number>(0);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const [tagSearchQuery, setTagSearchQuery] = useState('');
     const toast = useToast();
 
     const breadcrumbs: BreadcrumbItem[] = [
@@ -539,6 +540,30 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
         }
     };
 
+    const markChatAsUnread = async (chatId: number, e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        try {
+            const response = await fetch(`/chats/${chatId}/mark-unread`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                    'Accept': 'application/json',
+                },
+            });
+            
+            if (response.ok) {
+                toast?.success('Чат помечен как непрочитанный');
+                router.reload({ only: ['chats', 'stats'] });
+            } else {
+                toast?.error('Не удалось пометить чат');
+            }
+        } catch (error) {
+            toast?.error('Не удалось пометить чат');
+        }
+    };
+
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={chat.client?.name || `Чат #${chat.id}`} />
@@ -603,72 +628,93 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
                                         : chatItem.latest_message;
                                     
                                     return (
-                                        <a
-                                            key={chatItem.id}
-                                            href={`/chats/${chatItem.id}?${new URLSearchParams(filters as any).toString()}`}
-                                            className={`block p-4 hover:bg-accent/50 transition-colors ${
-                                                isActive ? 'bg-accent' : ''
-                                            }`}
-                                        >
-                                            <div className="flex items-start gap-3">
-                                                <Avatar className="h-10 w-10 flex-shrink-0">
-                                                    <AvatarImage src={chatItem.client?.avatar} />
-                                                    <AvatarFallback>
-                                                        <UserIcon className="h-5 w-5" />
-                                                    </AvatarFallback>
-                                                </Avatar>
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center justify-between gap-2 mb-1">
-                                                        <span className={`font-medium truncate ${
-                                                            hasUnread ? 'font-semibold' : ''
-                                                        }`}>
-                                                            {chatItem.client?.name || `Клиент #${chatItem.client_id}`}
-                                                        </span>
-                                                        <span className="text-xs text-muted-foreground flex-shrink-0">
-                                                            {chatItem.last_message_at
-                                                                ? new Date(chatItem.last_message_at).toLocaleTimeString('ru-RU', {
-                                                                      hour: '2-digit',
-                                                                      minute: '2-digit',
-                                                                  })
-                                                                : ''}
-                                                        </span>
-                                                    </div>
-                                                    <div className="flex items-center justify-between gap-2">
-                                                        <p className={`text-sm truncate flex-1 ${
-                                                            hasUnread ? 'font-medium text-foreground' : 'text-muted-foreground'
-                                                        }`}>
-                                                            {latestMsg?.content || 'Нет сообщений'}
-                                                        </p>
-                                                        <div className="flex items-center gap-2 flex-shrink-0">
-                                                            {chatItem.channel && (
-                                                                <span className="text-base">
-                                                                    {channelIcons[chatItem.channel.type] || '💬'}
+                                        <div key={chatItem.id} className="relative group">
+                                            <a
+                                                href={`/chats/${chatItem.id}?${new URLSearchParams(filters as any).toString()}`}
+                                                className={`block p-4 hover:bg-accent/50 transition-colors ${
+                                                    isActive ? 'bg-accent' : hasUnread ? 'bg-blue-50 dark:bg-blue-950/20' : ''
+                                                }`}
+                                            >
+                                                <div className="flex items-start gap-3">
+                                                    <Avatar className="h-10 w-10 flex-shrink-0">
+                                                        <AvatarImage src={chatItem.client?.avatar} />
+                                                        <AvatarFallback>
+                                                            <UserIcon className="h-5 w-5" />
+                                                        </AvatarFallback>
+                                                    </Avatar>
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center justify-between gap-2 mb-1">
+                                                            <span className={`font-medium truncate ${
+                                                                hasUnread ? 'font-semibold' : ''
+                                                            }`}>
+                                                                {chatItem.client?.name || `Клиент #${chatItem.client_id}`}
+                                                            </span>
+                                                            <div className="flex items-center gap-1">
+                                                                <span className="text-xs text-muted-foreground flex-shrink-0">
+                                                                    {chatItem.last_message_at
+                                                                        ? new Date(chatItem.last_message_at).toLocaleTimeString('ru-RU', {
+                                                                              hour: '2-digit',
+                                                                              minute: '2-digit',
+                                                                          })
+                                                                        : ''}
                                                                 </span>
-                                                            )}
-                                                            {hasUnread && (
-                                                                <Badge variant="destructive" className="h-5 min-w-5 px-1.5">
-                                                                    {chatItem.unread_count}
-                                                                </Badge>
-                                                            )}
+                                                                <DropdownMenu>
+                                                                    <DropdownMenuTrigger asChild onClick={(e) => e.preventDefault()}>
+                                                                        <Button 
+                                                                            variant="ghost" 
+                                                                            size="sm" 
+                                                                            className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                                            onClick={(e) => e.stopPropagation()}
+                                                                        >
+                                                                            <MoreVertical className="h-4 w-4" />
+                                                                        </Button>
+                                                                    </DropdownMenuTrigger>
+                                                                    <DropdownMenuContent align="end">
+                                                                        <DropdownMenuItem onClick={(e) => markChatAsUnread(chatItem.id, e)}>
+                                                                            <MailOpen className="h-4 w-4 mr-2" />
+                                                                            Непрочитанное
+                                                                        </DropdownMenuItem>
+                                                                    </DropdownMenuContent>
+                                                                </DropdownMenu>
+                                                            </div>
                                                         </div>
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <p className={`text-sm truncate flex-1 ${
+                                                                hasUnread ? 'font-medium text-foreground' : 'text-muted-foreground'
+                                                            }`}>
+                                                                {latestMsg?.content || 'Нет сообщений'}
+                                                            </p>
+                                                            <div className="flex items-center gap-2 flex-shrink-0">
+                                                                {chatItem.channel && (
+                                                                    <span className="text-base">
+                                                                        {channelIcons[chatItem.channel.type] || '💬'}
+                                                                    </span>
+                                                                )}
+                                                                {hasUnread && (
+                                                                    <Badge variant="destructive" className="h-5 min-w-5 px-1.5">
+                                                                        {chatItem.unread_count}
+                                                                    </Badge>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                        {chatItem.client?.tags && chatItem.client.tags.length > 0 && (
+                                                            <div className="flex flex-wrap gap-1 mt-1.5">
+                                                                {chatItem.client.tags.map((tag) => (
+                                                                    <Badge
+                                                                        key={tag.id}
+                                                                        variant="secondary"
+                                                                        className="text-xs px-1.5 py-0 h-5"
+                                                                        style={{ backgroundColor: tag.color + '20', color: tag.color }}
+                                                                    >
+                                                                        {tag.name}
+                                                                    </Badge>
+                                                                ))}
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                    {chatItem.client?.tags && chatItem.client.tags.length > 0 && (
-                                                        <div className="flex flex-wrap gap-1 mt-1.5">
-                                                            {chatItem.client.tags.map((tag) => (
-                                                                <Badge
-                                                                    key={tag.id}
-                                                                    variant="secondary"
-                                                                    className="text-xs px-1.5 py-0 h-5"
-                                                                    style={{ backgroundColor: tag.color + '20', color: tag.color }}
-                                                                >
-                                                                    {tag.name}
-                                                                </Badge>
-                                                            ))}
-                                                        </div>
-                                                    )}
                                                 </div>
-                                            </div>
-                                        </a>
+                                            </a>
+                                        </div>
                                     );
                                 })}
                             </div>
@@ -760,83 +806,88 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
                                             ))}
                                         </SelectContent>
                                     </Select>
-                                    {/* Transfer control */}
-                                    <Popover open={transferOpen} onOpenChange={setTransferOpen}>
-                                        <PopoverTrigger asChild>
-                                            <Button variant="outline" size="sm" className="h-8 ml-2">
-                                                Передать
-                                            </Button>
-                                        </PopoverTrigger>
-                                        <PopoverContent className="w-72 p-3">
-                                            <div className="space-y-2">
-                                                <div>
-                                                    <p className="text-xs text-muted-foreground mb-1">Назначить оператору</p>
-                                                    <Select
-                                                        value={selectedOperator ? String(selectedOperator) : ''}
-                                                        onValueChange={(v) => setSelectedOperator(v ? Number(v) : null)}
-                                                    >
-                                                        <SelectTrigger>
-                                                            <SelectValue placeholder="Выберите оператора" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            {operators.map((op) => (
-                                                                <SelectItem key={op.id} value={String(op.id)}>
-                                                                    {op.name} {op.email ? `(${op.email})` : ''}
-                                                                </SelectItem>
-                                                            ))}
-                                                        </SelectContent>
-                                                    </Select>
-                                                    <div className="mt-2 flex gap-2">
-                                                        <Button size="sm" onClick={() => assignToOperator(selectedOperator)} disabled={assigning}>
-                                                            Назначить
-                                                        </Button>
-                                                        <Button size="sm" variant="ghost" onClick={() => assignToOperator(null)} disabled={assigning}>
-                                                            Снять назначение
-                                                        </Button>
-                                                    </div>
-                                                </div>
-
-                                                <div className="pt-2">
-                                                    <p className="text-xs text-muted-foreground mb-1">Передать группе</p>
-                                                    <Select
-                                                        value={selectedGroup ? String(selectedGroup) : ''}
-                                                        onValueChange={(v) => setSelectedGroup(v ? Number(v) : null)}
-                                                    >
-                                                        <SelectTrigger>
-                                                            <SelectValue placeholder="Выберите группу" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            {operatorGroups.map((g) => (
-                                                                <SelectItem key={g.id} value={String(g.id)}>
-                                                                    {g.name}
-                                                                </SelectItem>
-                                                            ))}
-                                                        </SelectContent>
-                                                    </Select>
-                                                    <div className="mt-2 flex gap-2">
-                                                        <Button size="sm" onClick={() => assignToGroup(selectedGroup)} disabled={assigning}>
-                                                            Передать
-                                                        </Button>
-                                                        <Button size="sm" variant="ghost" onClick={() => assignToGroup(null)} disabled={assigning}>
-                                                            Снять группу
-                                                        </Button>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </PopoverContent>
-                                    </Popover>
                                     
-                                    {/* Mark as Unread button */}
-                                    <Button 
-                                        variant="outline" 
-                                        size="sm" 
-                                        className="h-8"
-                                        onClick={markAsUnread}
-                                        title="Пометить непрочитанным"
-                                    >
-                                        <MailOpen className="h-4 w-4 mr-1" />
-                                        Непрочитанное
-                                    </Button>
+                                    {/* Actions dropdown menu */}
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <Button variant="outline" size="sm" className="h-8 ml-2">
+                                                <MoreVertical className="h-4 w-4 mr-1" />
+                                                Действия
+                                            </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end" className="w-48">
+                                            <Popover open={transferOpen} onOpenChange={setTransferOpen}>
+                                                <PopoverTrigger asChild>
+                                                    <DropdownMenuItem onSelect={(e) => {e.preventDefault(); setTransferOpen(true);}}>
+                                                        <UserIcon className="h-4 w-4 mr-2" />
+                                                        Передать
+                                                    </DropdownMenuItem>
+                                                </PopoverTrigger>
+                                                <PopoverContent className="w-72 p-3">
+                                                    <div className="space-y-2">
+                                                        <div>
+                                                            <p className="text-xs text-muted-foreground mb-1">Назначить оператору</p>
+                                                            <Select
+                                                                value={selectedOperator ? String(selectedOperator) : ''}
+                                                                onValueChange={(v) => setSelectedOperator(v ? Number(v) : null)}
+                                                            >
+                                                                <SelectTrigger>
+                                                                    <SelectValue placeholder="Выберите оператора" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    {operators.map((op) => (
+                                                                        <SelectItem key={op.id} value={String(op.id)}>
+                                                                            {op.name} {op.email ? `(${op.email})` : ''}
+                                                                        </SelectItem>
+                                                                    ))}
+                                                                </SelectContent>
+                                                            </Select>
+                                                            <div className="mt-2 flex gap-2">
+                                                                <Button size="sm" onClick={() => assignToOperator(selectedOperator)} disabled={assigning}>
+                                                                    Назначить
+                                                                </Button>
+                                                                <Button size="sm" variant="ghost" onClick={() => assignToOperator(null)} disabled={assigning}>
+                                                                    Снять назначение
+                                                                </Button>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="pt-2">
+                                                            <p className="text-xs text-muted-foreground mb-1">Передать группе</p>
+                                                            <Select
+                                                                value={selectedGroup ? String(selectedGroup) : ''}
+                                                                onValueChange={(v) => setSelectedGroup(v ? Number(v) : null)}
+                                                            >
+                                                                <SelectTrigger>
+                                                                    <SelectValue placeholder="Выберите группу" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    {operatorGroups.map((g) => (
+                                                                        <SelectItem key={g.id} value={String(g.id)}>
+                                                                            {g.name}
+                                                                        </SelectItem>
+                                                                    ))}
+                                                                </SelectContent>
+                                                            </Select>
+                                                            <div className="mt-2 flex gap-2">
+                                                                <Button size="sm" onClick={() => assignToGroup(selectedGroup)} disabled={assigning}>
+                                                                    Передать
+                                                                </Button>
+                                                                <Button size="sm" variant="ghost" onClick={() => assignToGroup(null)} disabled={assigning}>
+                                                                    Снять группу
+                                                                </Button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </PopoverContent>
+                                            </Popover>
+                                            
+                                            <DropdownMenuItem onClick={markAsUnread}>
+                                                <MailOpen className="h-4 w-4 mr-2" />
+                                                Непрочитанное
+                                            </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
                                 </div>
                             </div>
                         </div>
@@ -1022,31 +1073,49 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
                                             </Button>
                                         </PopoverTrigger>
                                         <PopoverContent className="w-56 p-2" align="start">
+                                            <div className="mb-2">
+                                                <div className="relative">
+                                                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                                                    <Input
+                                                        placeholder="Поиск тегов..."
+                                                        value={tagSearchQuery}
+                                                        onChange={(e) => setTagSearchQuery(e.target.value)}
+                                                        className="pl-8 h-9 text-sm"
+                                                    />
+                                                </div>
+                                            </div>
                                             <div className="space-y-1 max-h-[300px] overflow-auto">
                                                 {allTags.length === 0 ? (
                                                     <p className="text-sm text-muted-foreground text-center py-2">
                                                         Нет доступных тегов
                                                     </p>
                                                 ) : (
-                                                    allTags.map((tag) => {
-                                                        const isSelected = clientTags.some(t => t.id === tag.id);
-                                                        return (
-                                                            <button
-                                                                key={tag.id}
-                                                                onClick={() => toggleTag(tag)}
-                                                                className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-accent text-left"
-                                                            >
-                                                                <Checkbox checked={isSelected} />
-                                                                <Badge
-                                                                    variant="secondary"
-                                                                    className="text-xs"
-                                                                    style={{ backgroundColor: tag.color + '20', color: tag.color }}
+                                                    allTags
+                                                        .filter(tag => tag.name.toLowerCase().includes(tagSearchQuery.toLowerCase()))
+                                                        .map((tag) => {
+                                                            const isSelected = clientTags.some(t => t.id === tag.id);
+                                                            return (
+                                                                <button
+                                                                    key={tag.id}
+                                                                    onClick={() => toggleTag(tag)}
+                                                                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-accent text-left"
                                                                 >
-                                                                    {tag.name}
-                                                                </Badge>
-                                                            </button>
-                                                        );
-                                                    })
+                                                                    <Checkbox checked={isSelected} />
+                                                                    <Badge
+                                                                        variant="secondary"
+                                                                        className="text-xs"
+                                                                        style={{ backgroundColor: tag.color + '20', color: tag.color }}
+                                                                    >
+                                                                        {tag.name}
+                                                                    </Badge>
+                                                                </button>
+                                                            );
+                                                        })
+                                                )}
+                                                {tagSearchQuery && allTags.filter(tag => tag.name.toLowerCase().includes(tagSearchQuery.toLowerCase())).length === 0 && (
+                                                    <p className="text-sm text-muted-foreground text-center py-2">
+                                                        Ничего не найдено
+                                                    </p>
                                                 )}
                                             </div>
                                         </PopoverContent>
