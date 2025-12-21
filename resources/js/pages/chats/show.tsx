@@ -565,8 +565,11 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
             
             if (response.ok) {
                 toast?.success('Чат помечен как непрочитанный');
-                // Перезагружаем страницу через Inertia для обновления списка
-                router.reload({ only: ['chats', 'stats'] });
+                // Перенаправляем на список чатов, чтобы изменения вступили в силу
+                router.visit('/chats', { 
+                    preserveState: false,
+                    replace: true 
+                });
             } else {
                 toast?.error('Не удалось пометить чат');
             }
@@ -843,15 +846,7 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
                                     </Select>
                                     
                                     {/* Actions dropdown menu */}
-                                    <DropdownMenu>
-                                        <DropdownMenuTrigger asChild>
-                                            <Button variant="outline" size="sm" className="h-8 ml-2">
-                                                <MoreVertical className="h-4 w-4 mr-1" />
-                                                Действия
-                                            </Button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent align="end" className="w-48">
-                                            <Popover open={transferOpen} onOpenChange={setTransferOpen}>
+                                                                                <Popover open={transferOpen} onOpenChange={setTransferOpen}>
                                                 <PopoverTrigger asChild>
                                                     <DropdownMenuItem onSelect={(e) => {e.preventDefault(); setTransferOpen(true);}}>
                                                         <UserIcon className="h-4 w-4 mr-2" />
@@ -916,13 +911,6 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
                                                     </div>
                                                 </PopoverContent>
                                             </Popover>
-                                            
-                                            <DropdownMenuItem onClick={markAsUnread}>
-                                                <MailOpen className="h-4 w-4 mr-2" />
-                                                Непрочитанное
-                                            </DropdownMenuItem>
-                                        </DropdownMenuContent>
-                                    </DropdownMenu>
                                 </div>
                             </div>
                         </div>
