@@ -845,72 +845,72 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
                                         </SelectContent>
                                     </Select>
                                     
-                                    {/* Actions dropdown menu */}
-                                                                                <Popover open={transferOpen} onOpenChange={setTransferOpen}>
-                                                <PopoverTrigger asChild>
-                                                    <DropdownMenuItem onSelect={(e) => {e.preventDefault(); setTransferOpen(true);}}>
-                                                        <UserIcon className="h-4 w-4 mr-2" />
-                                                        Передать
-                                                    </DropdownMenuItem>
-                                                </PopoverTrigger>
-                                                <PopoverContent className="w-72 p-3">
-                                                    <div className="space-y-2">
-                                                        <div>
-                                                            <p className="text-xs text-muted-foreground mb-1">Назначить оператору</p>
-                                                            <Select
-                                                                value={selectedOperator ? String(selectedOperator) : ''}
-                                                                onValueChange={(v) => setSelectedOperator(v ? Number(v) : null)}
-                                                            >
-                                                                <SelectTrigger>
-                                                                    <SelectValue placeholder="Выберите оператора" />
-                                                                </SelectTrigger>
-                                                                <SelectContent>
-                                                                    {operators.map((op) => (
-                                                                        <SelectItem key={op.id} value={String(op.id)}>
-                                                                            {op.name} {op.email ? `(${op.email})` : ''}
-                                                                        </SelectItem>
-                                                                    ))}
-                                                                </SelectContent>
-                                                            </Select>
-                                                            <div className="mt-2 flex gap-2">
-                                                                <Button size="sm" onClick={() => assignToOperator(selectedOperator)} disabled={assigning}>
-                                                                    Назначить
-                                                                </Button>
-                                                                <Button size="sm" variant="ghost" onClick={() => assignToOperator(null)} disabled={assigning}>
-                                                                    Снять назначение
-                                                                </Button>
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="pt-2">
-                                                            <p className="text-xs text-muted-foreground mb-1">Передать группе</p>
-                                                            <Select
-                                                                value={selectedGroup ? String(selectedGroup) : ''}
-                                                                onValueChange={(v) => setSelectedGroup(v ? Number(v) : null)}
-                                                            >
-                                                                <SelectTrigger>
-                                                                    <SelectValue placeholder="Выберите группу" />
-                                                                </SelectTrigger>
-                                                                <SelectContent>
-                                                                    {operatorGroups.map((g) => (
-                                                                        <SelectItem key={g.id} value={String(g.id)}>
-                                                                            {g.name}
-                                                                        </SelectItem>
-                                                                    ))}
-                                                                </SelectContent>
-                                                            </Select>
-                                                            <div className="mt-2 flex gap-2">
-                                                                <Button size="sm" onClick={() => assignToGroup(selectedGroup)} disabled={assigning}>
-                                                                    Передать
-                                                                </Button>
-                                                                <Button size="sm" variant="ghost" onClick={() => assignToGroup(null)} disabled={assigning}>
-                                                                    Снять группу
-                                                                </Button>
-                                                            </div>
-                                                        </div>
+                                    {/* Transfer button with popover */}
+                                    <Popover open={transferOpen} onOpenChange={setTransferOpen}>
+                                        <PopoverTrigger asChild>
+                                            <Button variant="outline" size="sm" className="h-8 ml-2">
+                                                <UserIcon className="h-4 w-4 mr-1" />
+                                                Передать
+                                            </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-72 p-3">
+                                            <div className="space-y-2">
+                                                <div>
+                                                    <p className="text-xs text-muted-foreground mb-1">Назначить оператору</p>
+                                                    <Select
+                                                        value={selectedOperator ? String(selectedOperator) : ''}
+                                                        onValueChange={(v) => setSelectedOperator(v ? Number(v) : null)}
+                                                    >
+                                                        <SelectTrigger>
+                                                            <SelectValue placeholder="Выберите оператора" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {operators.map((op) => (
+                                                                <SelectItem key={op.id} value={String(op.id)}>
+                                                                    {op.name} {op.email ? `(${op.email})` : ''}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                    <div className="mt-2 flex gap-2">
+                                                        <Button size="sm" onClick={() => assignToOperator(selectedOperator)} disabled={assigning}>
+                                                            Назначить
+                                                        </Button>
+                                                        <Button size="sm" variant="ghost" onClick={() => assignToOperator(null)} disabled={assigning}>
+                                                            Снять назначение
+                                                        </Button>
                                                     </div>
-                                                </PopoverContent>
-                                            </Popover>
+                                                </div>
+
+                                                <div className="pt-2">
+                                                    <p className="text-xs text-muted-foreground mb-1">Передать группе</p>
+                                                    <Select
+                                                        value={selectedGroup ? String(selectedGroup) : ''}
+                                                        onValueChange={(v) => setSelectedGroup(v ? Number(v) : null)}
+                                                    >
+                                                        <SelectTrigger>
+                                                            <SelectValue placeholder="Выберите группу" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {operatorGroups.map((g) => (
+                                                                <SelectItem key={g.id} value={String(g.id)}>
+                                                                    {g.name}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                    <div className="mt-2 flex gap-2">
+                                                        <Button size="sm" onClick={() => assignToGroup(selectedGroup)} disabled={assigning}>
+                                                            Передать
+                                                        </Button>
+                                                        <Button size="sm" variant="ghost" onClick={() => assignToGroup(null)} disabled={assigning}>
+                                                            Снять группу
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </PopoverContent>
+                                    </Popover>
                                 </div>
                             </div>
                         </div>
