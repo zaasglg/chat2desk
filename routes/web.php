@@ -13,6 +13,7 @@ use App\Http\Controllers\QuickReplyController;
 use App\Http\Controllers\TagController;
 use App\Http\Controllers\TelegramWebhookController;
 use App\Http\Controllers\FileUploadController;
+use App\Http\Controllers\MediaStreamController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Laravel\Fortify\Features;
@@ -108,6 +109,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // File Upload
     Route::post('api/upload/automation-file', [FileUploadController::class, 'uploadAutomationFile'])->name('upload.automation-file');
     Route::delete('api/upload/automation-file', [FileUploadController::class, 'deleteAutomationFile'])->name('delete.automation-file');
+
+    // Media Streaming (for optimized video playback)
+    Route::get('media/stream/{path}', [MediaStreamController::class, 'stream'])
+        ->where('path', '.*')
+        ->name('media.stream');
+    Route::get('media/thumbnail/{path}', [MediaStreamController::class, 'thumbnail'])
+        ->where('path', '.*')
+        ->name('media.thumbnail');
 });
 
 // Telegram Webhook (public, no auth)

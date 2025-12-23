@@ -1314,9 +1314,20 @@ function MessageBubble({ message, onImageClick }: { message: Message; onImageCli
                     }
 
                     if (type === 'video') {
+                        // Use streaming endpoint for storage files to enable Range requests
+                        const streamUrl = att.path
+                            ? `/media/stream/${att.path}`
+                            : url;
+
                         return (
-                            <video key={i} controls className="max-h-80 rounded mb-2 w-full">
-                                <source src={url} />
+                            <video
+                                key={i}
+                                controls
+                                preload="metadata"
+                                playsInline
+                                className="max-h-80 rounded mb-2 w-full bg-black/10"
+                            >
+                                <source src={streamUrl} type={att.mime || 'video/mp4'} />
                                 Ваш браузер не поддерживает видео.
                             </video>
                         );

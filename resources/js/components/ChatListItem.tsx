@@ -117,17 +117,22 @@ const ChatListItem = memo(function ChatListItem({
                             </div>
                         </div>
                         {chatItem.client?.tags && chatItem.client.tags.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-1.5">
-                                {chatItem.client.tags.map((tag: Tag) => (
+                            <div className="flex flex-nowrap gap-1 mt-1.5 overflow-hidden">
+                                {chatItem.client.tags.slice(0, 3).map((tag: Tag) => (
                                     <Badge
                                         key={tag.id}
                                         variant="secondary"
-                                        className="text-xs px-1.5 py-0 h-5"
+                                        className="text-xs px-1.5 py-0 h-5 flex-shrink-0"
                                         style={{ backgroundColor: tag.color + '20', color: tag.color }}
                                     >
                                         {tag.name}
                                     </Badge>
                                 ))}
+                                {chatItem.client.tags.length > 3 && (
+                                    <Badge variant="outline" className="text-xs px-1.5 py-0 h-5 flex-shrink-0">
+                                        +{chatItem.client.tags.length - 3}
+                                    </Badge>
+                                )}
                             </div>
                         )}
                     </div>
