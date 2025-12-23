@@ -1,6 +1,6 @@
 import { type Chat } from '@/types';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import React, { useRef } from 'react';
+import React, { useRef, useCallback } from 'react';
 import ChatListItem from './ChatListItem';
 
 interface VirtualChatListProps {
@@ -10,7 +10,13 @@ interface VirtualChatListProps {
     onMarkAsUnread: (chatId: number, e: React.MouseEvent) => void;
 }
 
-const ITEM_HEIGHT = 90; // Approximate height of each chat item
+// Estimate height based on whether chat has tags
+function estimateItemHeight(chat: Chat): number {
+    const baseHeight = 76; // Base height without tags
+    const tagRowHeight = 28; // Height for tags row
+    const hasTags = chat.client?.tags && chat.client.tags.length > 0;
+    return hasTags ? baseHeight + tagRowHeight : baseHeight;
+}
 
 export default function VirtualChatList({
     chats,
@@ -23,8 +29,12 @@ export default function VirtualChatList({
     const virtualizer = useVirtualizer({
         count: chats.length,
         getScrollElement: () => parentRef.current,
-        estimateSize: () => ITEM_HEIGHT,
+        estimateSize: useCallback((index: number) => estimateItemHeight(chats[index]), [chats]),
         overscan: 5, // Render 5 extra items above and below viewport
+        measureElement: (element) => {
+            // Measure actual element height for accurate positioning
+            return element.getBoundingClientRect().height;
+        },
     });
 
     if (chats.length === 0) {
@@ -39,7 +49,6 @@ export default function VirtualChatList({
         <div
             ref={parentRef}
             className="flex-1 overflow-auto"
-            style={{ contain: 'strict' }}
         >
             <div
                 style={{
@@ -53,12 +62,13 @@ export default function VirtualChatList({
                     return (
                         <div
                             key={chatItem.id}
+                            data-index={virtualItem.index}
+                            ref={virtualizer.measureElement}
                             style={{
                                 position: 'absolute',
                                 top: 0,
                                 left: 0,
                                 width: '100%',
-                                height: `${virtualItem.size}px`,
                                 transform: `translateY(${virtualItem.start}px)`,
                             }}
                         >
@@ -75,3 +85,4 @@ export default function VirtualChatList({
         </div>
     );
 }
+
