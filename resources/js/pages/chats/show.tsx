@@ -441,7 +441,7 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
                     'Content-Type': 'application/json',
                     'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
                 },
-                body: JSON.stringify({ tag_ids: newTags.map(t => t.id) }),
+                body: JSON.stringify({ tag_ids: newTags.map(t => t.id), chat_id: chat.id }),
             });
         } catch (error) {
             console.error('Failed to sync tags:', error);
@@ -463,7 +463,7 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
                     'Content-Type': 'application/json',
                     'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
                 },
-                body: JSON.stringify({ tag_ids: newTags.map(t => t.id) }),
+                body: JSON.stringify({ tag_ids: newTags.map(t => t.id), chat_id: chat.id }),
             });
         } catch (error) {
             console.error('Failed to remove tag:', error);
