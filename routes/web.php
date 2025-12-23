@@ -100,6 +100,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Broadcasts
     Route::get('broadcasts/create', [\App\Http\Controllers\BroadcastController::class, 'create'])->name('broadcasts.create');
     Route::post('broadcasts', [\App\Http\Controllers\BroadcastController::class, 'store'])->name('broadcasts.store');
+    Route::post('broadcasts/count', [\App\Http\Controllers\BroadcastController::class, 'count'])->name('broadcasts.count');
 
     // Analytics
     Route::get('analytics', [AnalyticsController::class, 'index'])->name('analytics.index');

@@ -13,8 +13,8 @@ import {
 import AppLayout from '@/layouts/app-layout';
 import { Head, router, useForm } from '@inertiajs/react';
 import { BreadcrumbItem, Tag } from '@/types';
-import { ArrowLeft, Search, Image as ImageIcon, X } from 'lucide-react';
-import { useState, useRef } from 'react';
+import { ArrowLeft, Search, Image as ImageIcon, X, Calendar, MessageSquare, Users, Loader2 } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 
 interface Props {
     channels: { id: number; name: string; type: string }[];
@@ -31,6 +31,8 @@ export default function BroadcastCreate({ channels, tags }: Props) {
         channel_id: '',
         has_tag_ids: [] as number[],
         not_has_tag_ids: [] as number[],
+        date_from: '',
+        date_to: '',
         image: null as File | null,
     });
     const [result, setResult] = useState<string | null>(null);
@@ -38,6 +40,59 @@ export default function BroadcastCreate({ channels, tags }: Props) {
     const [notHasTagSearch, setNotHasTagSearch] = useState('');
     const [imagePreview, setImagePreview] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Stats for preview
+    const [chatCount, setChatCount] = useState<number | null>(null);
+    const [messageCount, setMessageCount] = useState<number | null>(null);
+    const [counting, setCounting] = useState(false);
+
+    // Fetch count when filters change
+    const fetchCount = useCallback(async () => {
+        // Only fetch if at least one filter is set
+        if (!data.has_tag_ids.length && !data.not_has_tag_ids.length && !data.date_from && !data.date_to && !data.channel_id) {
+            setChatCount(null);
+            setMessageCount(null);
+            return;
+        }
+
+        setCounting(true);
+        try {
+            const response = await fetch('/broadcasts/count', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({
+                    channel_id: data.channel_id || null,
+                    has_tag_ids: data.has_tag_ids,
+                    not_has_tag_ids: data.not_has_tag_ids,
+                    date_from: data.date_from || null,
+                    date_to: data.date_to || null,
+                }),
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                setChatCount(result.chat_count);
+                setMessageCount(result.message_count);
+            }
+        } catch (error) {
+            console.error('Failed to fetch count:', error);
+        } finally {
+            setCounting(false);
+        }
+    }, [data.channel_id, data.has_tag_ids, data.not_has_tag_ids, data.date_from, data.date_to]);
+
+    // Debounced effect for fetching count
+    useEffect(() => {
+        const timeoutId = setTimeout(() => {
+            fetchCount();
+        }, 500);
+
+        return () => clearTimeout(timeoutId);
+    }, [fetchCount]);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -116,6 +171,70 @@ export default function BroadcastCreate({ channels, tags }: Props) {
                         </select>
                     </div>
 
+                    {/* Date Range Filter */}
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-sm text-muted-foreground mb-2 flex items-center gap-2">
+                                <Calendar className="h-4 w-4" />
+                                Дата с
+                            </label>
+                            <Input
+                                type="date"
+                                value={data.date_from}
+                                onChange={(e) => setData('date_from', e.target.value)}
+                                className="mt-1"
+                            />
+                        </div>
+                        <div>
+                            <label className="text-sm text-muted-foreground mb-2 flex items-center gap-2">
+                                <Calendar className="h-4 w-4" />
+                                Дата по
+                            </label>
+                            <Input
+                                type="date"
+                                value={data.date_to}
+                                onChange={(e) => setData('date_to', e.target.value)}
+                                className="mt-1"
+                            />
+                        </div>
+                    </div>
+
+                    {/* Stats Preview */}
+                    {(chatCount !== null || counting) && (
+                        <div className="rounded-lg border bg-muted/50 p-4">
+                            <div className="flex items-center gap-6">
+                                {counting ? (
+                                    <div className="flex items-center gap-2 text-muted-foreground">
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        <span>Подсчёт...</span>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div className="flex items-center gap-2">
+                                            <Users className="h-5 w-5 text-blue-500" />
+                                            <div>
+                                                <span className="text-2xl font-bold">{chatCount?.toLocaleString()}</span>
+                                                <span className="text-sm text-muted-foreground ml-2">чатов</span>
+                                            </div>
+                                        </div>
+                                        {messageCount !== null && messageCount > 0 && (
+                                            <div className="flex items-center gap-2">
+                                                <MessageSquare className="h-5 w-5 text-green-500" />
+                                                <div>
+                                                    <span className="text-2xl font-bold">{messageCount?.toLocaleString()}</span>
+                                                    <span className="text-sm text-muted-foreground ml-2">сообщений за период</span>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                            </div>
+                            <p className="text-sm text-muted-foreground mt-2">
+                                Рассылка будет отправлена на {chatCount?.toLocaleString()} чатов
+                            </p>
+                        </div>
+                    )}
+
                     <div>
                         <label className="text-sm text-muted-foreground mb-2 block">Имеет теги</label>
                         <div className="border rounded-md p-3 max-h-60 overflow-auto">
@@ -143,7 +262,7 @@ export default function BroadcastCreate({ channels, tags }: Props) {
                                                 key={tag.id}
                                                 className="flex items-center gap-2 p-2 rounded hover:bg-accent"
                                             >
-                                                <Checkbox 
+                                                <Checkbox
                                                     checked={data.has_tag_ids.includes(tag.id)}
                                                     onCheckedChange={() => toggleHasTag(tag.id)}
                                                 />
@@ -194,7 +313,7 @@ export default function BroadcastCreate({ channels, tags }: Props) {
                                                 key={tag.id}
                                                 className="flex items-center gap-2 p-2 rounded hover:bg-accent"
                                             >
-                                                <Checkbox 
+                                                <Checkbox
                                                     checked={data.not_has_tag_ids.includes(tag.id)}
                                                     onCheckedChange={() => toggleNotHasTag(tag.id)}
                                                 />
@@ -218,7 +337,8 @@ export default function BroadcastCreate({ channels, tags }: Props) {
                         </div>
                     </div>
 
-                    <div>                        <label className="text-sm text-muted-foreground mb-2 block">Изображение (опционально)</label>
+                    <div>
+                        <label className="text-sm text-muted-foreground mb-2 block">Изображение (опционально)</label>
                         <input
                             ref={fileInputRef}
                             type="file"
@@ -228,9 +348,9 @@ export default function BroadcastCreate({ channels, tags }: Props) {
                         />
                         {imagePreview ? (
                             <div className="relative inline-block">
-                                <img 
-                                    src={imagePreview} 
-                                    alt="Preview" 
+                                <img
+                                    src={imagePreview}
+                                    alt="Preview"
                                     className="max-w-xs max-h-48 rounded border"
                                 />
                                 <button
@@ -254,7 +374,8 @@ export default function BroadcastCreate({ channels, tags }: Props) {
                         )}
                     </div>
 
-                    <div>                        <label className="text-sm text-muted-foreground">Текст рассылки</label>
+                    <div>
+                        <label className="text-sm text-muted-foreground">Текст рассылки</label>
                         <Textarea
                             value={data.content}
                             onChange={(e) => setData('content', e.target.value)}
@@ -264,7 +385,9 @@ export default function BroadcastCreate({ channels, tags }: Props) {
                     </div>
 
                     <div className="flex items-center gap-2">
-                        <Button type="submit" disabled={processing}>{processing ? 'Отправка...' : 'Отправить рассылку'}</Button>
+                        <Button type="submit" disabled={processing || (chatCount !== null && chatCount === 0)}>
+                            {processing ? 'Отправка...' : `Отправить рассылку${chatCount !== null ? ` (${chatCount} чатов)` : ''}`}
+                        </Button>
                         {result && <span className="text-sm text-green-600">{result}</span>}
                     </div>
                 </form>

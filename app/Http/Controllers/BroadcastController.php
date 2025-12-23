@@ -8,6 +8,7 @@ use App\Services\TelegramService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Log;
+use Carbon\Carbon;
 
 class BroadcastController extends Controller
 {
@@ -21,6 +22,91 @@ class BroadcastController extends Controller
         ]);
     }
 
+    /**
+     * Count chats matching the given filters (for preview before sending)
+     */
+    public function count(Request $request)
+    {
+        $data = $request->validate([
+            'channel_id' => 'nullable|exists:channels,id',
+            'has_tag_ids' => 'nullable|array',
+            'has_tag_ids.*' => 'exists:tags,id',
+            'not_has_tag_ids' => 'nullable|array',
+            'not_has_tag_ids.*' => 'exists:tags,id',
+            'date_from' => 'nullable|date',
+            'date_to' => 'nullable|date',
+        ]);
+
+        $result = $this->buildFilteredQuery($data);
+
+        return response()->json([
+            'chat_count' => $result['count'],
+            'message_count' => $result['message_count'],
+        ]);
+    }
+
+    /**
+     * Build a query for chats based on filters
+     */
+    private function buildFilteredQuery(array $data): array
+    {
+        $channelFilter = $data['channel_id'] ?? null;
+        $hasTagIds = $data['has_tag_ids'] ?? [];
+        $notHasTagIds = $data['not_has_tag_ids'] ?? [];
+        $dateFrom = $data['date_from'] ?? null;
+        $dateTo = $data['date_to'] ?? null;
+
+        // Query chats that have a channel and a client
+        $query = Chat::with('channel', 'client.tags')->whereNotNull('client_id');
+        
+        if ($channelFilter) {
+            $query->where('channel_id', $channelFilter);
+        }
+
+        // Apply tag filters
+        if (!empty($hasTagIds)) {
+            $query->whereHas('client.tags', function($q) use ($hasTagIds) {
+                $q->whereIn('tags.id', $hasTagIds);
+            });
+        }
+        
+        if (!empty($notHasTagIds)) {
+            $query->whereDoesntHave('client.tags', function($q) use ($notHasTagIds) {
+                $q->whereIn('tags.id', $notHasTagIds);
+            });
+        }
+
+        // Apply date filters - filter by messages in the chat within date range
+        $messageCount = 0;
+        if ($dateFrom || $dateTo) {
+            $query->whereHas('messages', function($q) use ($dateFrom, $dateTo) {
+                if ($dateFrom) {
+                    $q->where('created_at', '>=', Carbon::parse($dateFrom)->startOfDay());
+                }
+                if ($dateTo) {
+                    $q->where('created_at', '<=', Carbon::parse($dateTo)->endOfDay());
+                }
+            });
+
+            // Count messages in the date range for matching chats
+            $chatIds = (clone $query)->pluck('id');
+            $messageQuery = Message::whereIn('chat_id', $chatIds);
+            if ($dateFrom) {
+                $messageQuery->where('created_at', '>=', Carbon::parse($dateFrom)->startOfDay());
+            }
+            if ($dateTo) {
+                $messageQuery->where('created_at', '<=', Carbon::parse($dateTo)->endOfDay());
+            }
+            $messageCount = $messageQuery->count();
+        }
+
+        return [
+            'query' => $query,
+            'count' => $query->count(),
+            'message_count' => $messageCount,
+        ];
+    }
+
     public function store(Request $request, TelegramService $telegramService)
     {
         $data = $request->validate([
@@ -30,39 +116,20 @@ class BroadcastController extends Controller
             'has_tag_ids.*' => 'exists:tags,id',
             'not_has_tag_ids' => 'nullable|array',
             'not_has_tag_ids.*' => 'exists:tags,id',
+            'date_from' => 'nullable|date',
+            'date_to' => 'nullable|date',
             'image' => 'nullable|image|max:10240', // max 10MB
         ]);
 
-        $channelFilter = $data['channel_id'] ?? null;
-        $hasTagIds = $data['has_tag_ids'] ?? [];
-        $notHasTagIds = $data['not_has_tag_ids'] ?? [];
-        
         // Handle image upload
         $imagePath = null;
         if ($request->hasFile('image')) {
             $imagePath = $request->file('image')->store('broadcast_images', 'public');
         }
 
-        // Query chats that have a channel and a client
-        $query = Chat::with('channel', 'client.tags')->whereNotNull('client_id');
-        if ($channelFilter) {
-            $query->where('channel_id', $channelFilter);
-        }
-
-        // Apply tag filters
-        if (!empty($hasTagIds)) {
-            // Клиенты, у которых есть хотя бы один из выбранных тегов
-            $query->whereHas('client.tags', function($q) use ($hasTagIds) {
-                $q->whereIn('tags.id', $hasTagIds);
-            });
-        }
-        
-        if (!empty($notHasTagIds)) {
-            // Клиенты, у которых нет ни одного из выбранных тегов
-            $query->whereDoesntHave('client.tags', function($q) use ($notHasTagIds) {
-                $q->whereIn('tags.id', $notHasTagIds);
-            });
-        }
+        // Use the same query builder
+        $result = $this->buildFilteredQuery($data);
+        $query = $result['query'];
 
         $sent = 0;
         $failed = 0;
