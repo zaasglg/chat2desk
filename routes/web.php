@@ -102,6 +102,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // Analytics
     Route::get('analytics', [AnalyticsController::class, 'index'])->name('analytics.index');
+    Route::post('analytics/calculate', [AnalyticsController::class, 'calculate'])->name('analytics.calculate');
+    Route::post('analytics/export', [AnalyticsController::class, 'export'])->name('analytics.export');
 
     // File Upload
     Route::post('api/upload/automation-file', [FileUploadController::class, 'uploadAutomationFile'])->name('upload.automation-file');

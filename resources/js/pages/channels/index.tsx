@@ -12,10 +12,11 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem, type Channel } from '@/types';
 import { Head, router, useForm } from '@inertiajs/react';
-import { Plus, Edit, Trash2, Power, PowerOff, Bot, CheckCircle, AlertCircle, Loader2, ExternalLink } from 'lucide-react';
+import { Plus, Edit, Trash2, Power, PowerOff, Bot, CheckCircle, AlertCircle, Loader2, ExternalLink, MessageSquareOff } from 'lucide-react';
 import { useState } from 'react';
 
 interface TelegramBotInfo {
@@ -48,6 +49,7 @@ export default function ChannelsIndex({ channels }: Props) {
     const { data, setData, post, put, processing, reset, errors } = useForm({
         name: '',
         bot_token: '',
+        disable_automations: false,
     });
 
     const verifyToken = async () => {
@@ -109,9 +111,11 @@ export default function ChannelsIndex({ channels }: Props) {
     const handleEdit = (channel: Channel) => {
         setEditingChannel(channel);
         const credentials = channel.credentials as { bot_token?: string } | undefined;
+        const settings = channel.settings as { disable_automations?: boolean } | undefined;
         setData({
             name: channel.name,
             bot_token: credentials?.bot_token || '',
+            disable_automations: settings?.disable_automations || false,
         });
         setIsOpen(true);
     };
@@ -240,6 +244,24 @@ export default function ChannelsIndex({ channels }: Props) {
                                     )}
                                 </div>
 
+                                {editingChannel && (
+                                    <div className="flex items-center justify-between rounded-lg border p-4">
+                                        <div className="space-y-0.5">
+                                            <Label htmlFor="disable_automations" className="text-base">
+                                                Отключить автоматизации
+                                            </Label>
+                                            <div className="text-sm text-muted-foreground">
+                                                Бот будет только сохранять сообщения, но не будет отвечать автоматически
+                                            </div>
+                                        </div>
+                                        <Switch
+                                            id="disable_automations"
+                                            checked={data.disable_automations}
+                                            onCheckedChange={(checked) => setData('disable_automations', checked)}
+                                        />
+                                    </div>
+                                )}
+
                                 <div className="flex justify-end gap-2 pt-2">
                                     <Button
                                         type="button"
@@ -343,13 +365,21 @@ export default function ChannelsIndex({ channels }: Props) {
                                     </div>
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="flex items-center justify-between">
-                                        <Badge variant={channel.is_active ? 'default' : 'secondary'}>
-                                            {channel.is_active ? 'Активен' : 'Отключен'}
-                                        </Badge>
-                                        <span className="text-sm text-muted-foreground">
-                                            {channel.chats_count} чатов
-                                        </span>
+                                    <div className="space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <Badge variant={channel.is_active ? 'default' : 'secondary'}>
+                                                {channel.is_active ? 'Активен' : 'Отключен'}
+                                            </Badge>
+                                            <span className="text-sm text-muted-foreground">
+                                                {channel.chats_count} чатов
+                                            </span>
+                                        </div>
+                                        {(channel.settings as { disable_automations?: boolean } | undefined)?.disable_automations && (
+                                            <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400">
+                                                <MessageSquareOff className="h-4 w-4" />
+                                                <span>Автоматизации отключены</span>
+                                            </div>
+                                        )}
                                     </div>
                                 </CardContent>
                             </Card>

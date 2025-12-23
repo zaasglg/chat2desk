@@ -26,6 +26,7 @@ class ChannelController extends Controller
         $request->validate([
             'name' => 'required|string|max:255',
             'bot_token' => 'required|string',
+            'disable_automations' => 'nullable|boolean',
         ]);
 
         // Verify bot token with Telegram API
@@ -52,6 +53,11 @@ class ChannelController extends Controller
         // Generate unique webhook token
         $webhookToken = Str::random(64);
 
+        $settings = [];
+        if ($request->has('disable_automations')) {
+            $settings['disable_automations'] = (bool) $request->disable_automations;
+        }
+
         $channel = Channel::create([
             'name' => $request->name,
             'type' => 'telegram',
@@ -63,7 +69,7 @@ class ChannelController extends Controller
                 'webhook_token' => $webhookToken,
             ],
             'is_active' => true,
-            'settings' => [],
+            'settings' => $settings,
         ]);
 
         // Set webhook
@@ -77,9 +83,21 @@ class ChannelController extends Controller
         $request->validate([
             'name' => 'required|string|max:255',
             'bot_token' => 'nullable|string',
+            'disable_automations' => 'nullable|boolean',
         ]);
 
         $data = ['name' => $request->name];
+        
+        // Update settings - always update disable_automations if provided
+        $settings = $channel->settings ?? [];
+        if ($request->has('disable_automations')) {
+            $settings['disable_automations'] = (bool) $request->disable_automations;
+            \Log::info('Updating disable_automations setting', [
+                'channel_id' => $channel->id,
+                'disable_automations' => $settings['disable_automations'],
+            ]);
+        }
+        $data['settings'] = $settings;
 
         // If token changed, verify it
         if ($request->filled('bot_token')) {

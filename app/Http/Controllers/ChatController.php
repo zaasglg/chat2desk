@@ -55,13 +55,22 @@ class ChatController extends Controller
             });
         }
 
+        // Filter by tags
+        if ($request->has('tag_ids') && !empty($request->tag_ids)) {
+            $tagIds = is_array($request->tag_ids) ? $request->tag_ids : [$request->tag_ids];
+            $tagIds = array_map('intval', $tagIds);
+            $query->whereHas('client.tags', function ($q) use ($tagIds) {
+                $q->whereIn('tags.id', $tagIds);
+            });
+        }
+
         $firstChat = $query->first();
         
         if ($firstChat) {
             // Redirect to first chat with filters
             $params = array_merge(
                 ['chat' => $firstChat->id],
-                $request->only(['category', 'search'])
+                $request->only(['category', 'search', 'tag_ids'])
             );
             return redirect()->route('chats.show', $params);
         }
@@ -104,7 +113,7 @@ class ChatController extends Controller
             'chats' => collect([]),
             'channels' => $channels,
             'stats' => $stats,
-            'filters' => $request->only(['category', 'search']),
+            'filters' => $request->only(['category', 'search', 'tag_ids']),
         ]);
     }
 
@@ -166,9 +175,34 @@ class ChatController extends Controller
             });
         }
 
+        // Filter by tags
+        if ($request->has('tag_ids') && !empty($request->tag_ids)) {
+            $tagIds = is_array($request->tag_ids) ? $request->tag_ids : [$request->tag_ids];
+            $tagIds = array_map('intval', $tagIds);
+            $chatsQuery->whereHas('client.tags', function ($q) use ($tagIds) {
+                $q->whereIn('tags.id', $tagIds);
+            });
+        }
+
         $chatsQuery->orderBy('last_message_at', 'desc');
 
         $chats = $chatsQuery->limit(100)->get();
+        
+        // Mark duplicate chats (client already wrote to other bots before this chat)
+        $chats = $chats->map(function ($chat) {
+            if ($chat->client) {
+                // Check if client has other chats created before this chat
+                $hasOtherChats = $chat->client->chats()
+                    ->where('id', '!=', $chat->id)
+                    ->where('created_at', '<', $chat->created_at)
+                    ->exists();
+                
+                $chat->is_duplicate = $hasOtherChats;
+            } else {
+                $chat->is_duplicate = false;
+            }
+            return $chat;
+        });
         
         $channels = Channel::where('type', 'telegram')
             ->where('is_active', true)
@@ -201,7 +235,7 @@ class ChatController extends Controller
             'chats' => $chats,
             'channels' => $channels,
             'stats' => $stats,
-            'filters' => $request->only(['category', 'search']),
+            'filters' => $request->only(['category', 'search', 'tag_ids']),
         ]);
     }
 

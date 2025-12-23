@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem, type Client, type PaginatedData } from '@/types';
 import { Head, Link, router } from '@inertiajs/react';
-import { Search, User, Phone, Mail, MessageSquare } from 'lucide-react';
+import { Search, User, Phone, Mail, MessageSquare, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 
 interface Props {
@@ -23,6 +23,18 @@ export default function ClientsIndex({ clients, filters }: Props) {
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
         router.get('/clients', { search }, { preserveState: true });
+    };
+
+    const handleDelete = (client: Client & { chats_count: number }) => {
+        if (!confirm(`Удалить клиента "${client.name || 'Без имени'}"?\n\nЭто действие удалит:\n- Клиента\n- Все чаты (${client.chats_count})\n- Все сообщения\n\nЭто действие нельзя отменить.`)) {
+            return;
+        }
+
+        router.delete(`/clients/${client.id}`, {
+            onSuccess: () => {
+                // Success message is handled by Inertia flash message
+            },
+        });
     };
 
     return (
@@ -113,11 +125,22 @@ export default function ClientsIndex({ clients, filters }: Props) {
                                         </Badge>
                                     </td>
                                     <td className="px-4 py-3 text-right">
-                                        <Button variant="ghost" size="sm" asChild>
-                                            <Link href={`/clients/${client.id}`}>
-                                                Открыть
-                                            </Link>
-                                        </Button>
+                                        <div className="flex items-center justify-end gap-2">
+                                            <Button variant="ghost" size="sm" asChild>
+                                                <Link href={`/clients/${client.id}`}>
+                                                    Открыть
+                                                </Link>
+                                            </Button>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => handleDelete(client)}
+                                                className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+                                                title="Удалить клиента и все чаты"
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))}

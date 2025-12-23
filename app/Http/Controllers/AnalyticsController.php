@@ -3,145 +3,227 @@
 namespace App\Http\Controllers;
 
 use App\Models\Chat;
-use App\Models\Message;
+use App\Models\Client;
 use App\Models\Channel;
+use App\Models\Tag;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
+use Illuminate\Support\Facades\DB;
 
 class AnalyticsController extends Controller
 {
     public function index(Request $request)
     {
-        $period = $request->get('period', '7d');
-        $startDateParam = $request->get('start_date');
-        $endDateParam = $request->get('end_date');
+        $channels = Channel::where('type', 'telegram')->where('is_active', true)->get();
+        $tags = Tag::orderBy('name')->get();
+        $operators = User::whereIn('role', ['admin', 'operator'])->orderBy('name')->get();
         
-        // Если переданы кастомные даты
-        if ($startDateParam && $endDateParam) {
-            $startDate = \Carbon\Carbon::parse($startDateParam)->startOfDay();
-            $endDate = \Carbon\Carbon::parse($endDateParam)->endOfDay();
-            $period = 'custom';
-        } else {
-            $endDate = now();
-            $startDate = match ($period) {
-                '24h' => now()->subDay(),
-                '7d' => now()->subDays(7),
-                '30d' => now()->subDays(30),
-                '90d' => now()->subDays(90),
-                default => now()->subDays(7),
-            };
+        $countResult = null;
+        if ($request->has('count_result')) {
+            $countResult = $request->get('count_result');
         }
 
-        // Общая статистика
-        $stats = [
-            // Считаем чаты, у которых есть сообщения в выбранном периоде
-            'total_chats' => Chat::whereHas('messages', function ($q) use ($startDate, $endDate) {
-                $q->whereBetween('created_at', [$startDate, $endDate]);
-            })->count(),
-            'total_messages' => Message::whereBetween('created_at', [$startDate, $endDate])->count(),
-            'incoming_messages' => Message::whereBetween('created_at', [$startDate, $endDate])->where('direction', 'incoming')->count(),
-            'outgoing_messages' => Message::whereBetween('created_at', [$startDate, $endDate])->where('direction', 'outgoing')->count(),
-            // Считаем чаты, которые были решены в выбранном периоде
-            'resolved_chats' => Chat::where('status', 'resolved')
-                ->whereBetween('updated_at', [$startDate, $endDate])
-                ->count(),
-            'avg_response_time' => $this->calculateAvgResponseTime($startDate, $endDate),
-        ];
-
-        // Статистика по каналам
-        $channelStats = Channel::withCount([
-            'chats' => function ($q) use ($startDate, $endDate) {
-                // Считаем чаты, у которых есть сообщения в выбранном периоде
-                $q->whereHas('messages', function ($mq) use ($startDate, $endDate) {
-                    $mq->whereBetween('created_at', [$startDate, $endDate]);
-                });
-            },
-            'messages' => function ($q) use ($startDate, $endDate) {
-                $q->whereBetween('created_at', [$startDate, $endDate]);
-            },
-        ])->get();
-
-        // График сообщений по дням
-        // График сообщений по дням
-        $messagesByDay = Message::where('created_at', '>=', $startDate)
-            ->where('created_at', '<=', $endDate)
-            ->selectRaw('DATE(created_at) as date, direction, COUNT(*) as count')
-            ->groupBy('date', 'direction')
-            ->orderBy('date')
-            ->get()
-            ->groupBy('date')
-            ->map(function ($items) {
-                return [
-                    'incoming' => $items->where('direction', 'incoming')->first()?->count ?? 0,
-                    'outgoing' => $items->where('direction', 'outgoing')->first()?->count ?? 0,
-                ];
-            });
-
-        // График чатов по дням (считаем уникальные чаты по сообщениям)
-        $chatsByDay = Message::whereBetween('created_at', [$startDate, $endDate])
-            ->selectRaw('DATE(created_at) as date, COUNT(DISTINCT chat_id) as count')
-            ->groupBy('date')
-            ->orderBy('date')
-            ->pluck('count', 'date');
-
-        // Статистика по статусам
-        $chatsByStatus = Chat::selectRaw('status, COUNT(*) as count')
-            ->groupBy('status')
-            ->pluck('count', 'status');
-
-        // Статистика по тегам клиентов (считаем чаты с сообщениями в периоде)
-        $chatsByTag = \DB::table('client_tag')
-            ->join('tags', 'client_tag.tag_id', '=', 'tags.id')
-            ->join('clients', 'client_tag.client_id', '=', 'clients.id')
-            ->join('chats', 'chats.client_id', '=', 'clients.id')
-            ->join('messages', 'messages.chat_id', '=', 'chats.id')
-            ->whereBetween('messages.created_at', [$startDate, $endDate])
-            ->selectRaw('tags.id, tags.name, tags.color, COUNT(DISTINCT chats.id) as chats_count')
-            ->groupBy('tags.id', 'tags.name', 'tags.color')
-            ->orderByDesc('chats_count')
-            ->get();
-
         return Inertia::render('analytics/index', [
-            'stats' => $stats,
-            'channelStats' => $channelStats,
-            'messagesByDay' => $messagesByDay,
-            'chatsByDay' => $chatsByDay,
-            'chatsByStatus' => $chatsByStatus,
-            'chatsByTag' => $chatsByTag,
-            'period' => $period,
-            'startDate' => $startDate->format('Y-m-d'),
-            'endDate' => $endDate->format('Y-m-d'),
+            'channels' => $channels,
+            'tags' => $tags,
+            'operators' => $operators,
+            'countResult' => $countResult,
         ]);
     }
 
-    private function calculateAvgResponseTime($startDate, $endDate = null)
+    public function calculate(Request $request)
     {
-        // Упрощенный расчет среднего времени ответа
-        $query = Chat::where('created_at', '>=', $startDate)
-            ->whereNotNull('operator_id');
+        $query = $this->buildFilterQuery($request);
         
-        if ($endDate) {
-            $query->where('created_at', '<=', $endDate);
+        // Count total clients
+        $totalClients = Client::count();
+        
+        // Count matched clients
+        $matchedClients = $query->count();
+        
+        // Get matched client IDs for tag statistics
+        $matchedClientIds = $query->pluck('id');
+        
+        // Calculate tag statistics for matched clients
+        $tagStats = [];
+        if ($matchedClientIds->isNotEmpty()) {
+            $tagStats = DB::table('client_tag')
+                ->join('tags', 'client_tag.tag_id', '=', 'tags.id')
+                ->whereIn('client_tag.client_id', $matchedClientIds)
+                ->select('tags.id', 'tags.name', 'tags.color', DB::raw('COUNT(DISTINCT client_tag.client_id) as clients_count'))
+                ->groupBy('tags.id', 'tags.name', 'tags.color')
+                ->orderByDesc('clients_count')
+                ->get()
+                ->map(function($tag) {
+                    return [
+                        'id' => $tag->id,
+                        'name' => $tag->name,
+                        'color' => $tag->color,
+                        'clients_count' => $tag->clients_count,
+                    ];
+                });
         }
         
-        $chats = $query->with(['messages' => function ($q) {
-                $q->orderBy('created_at', 'asc')->limit(2);
-            }])
+        $channels = Channel::where('type', 'telegram')->where('is_active', true)->get();
+        $tags = Tag::orderBy('name')->get();
+        $operators = User::whereIn('role', ['admin', 'operator'])->orderBy('name')->get();
+        
+        return Inertia::render('analytics/index', [
+            'channels' => $channels,
+            'tags' => $tags,
+            'operators' => $operators,
+            'countResult' => [
+                'total' => $totalClients,
+                'matched' => $matchedClients,
+                'tagStats' => $tagStats,
+            ],
+        ]);
+    }
+
+    public function export(Request $request)
+    {
+        $query = $this->buildFilterQuery($request);
+        
+        // Get client IDs
+        $clientIds = $query->pluck('id');
+        
+        // Get clients with their chats
+        $clients = Client::whereIn('id', $clientIds)
+            ->with(['chats.channel', 'tags'])
             ->get();
+        
+        // Generate CSV
+        $filename = 'clients_export_' . date('Y-m-d_His') . '.csv';
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ];
+        
+        $callback = function() use ($clients) {
+            $file = fopen('php://output', 'w');
+            
+            // BOM for UTF-8
+            fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF));
+            
+            // Headers
+            fputcsv($file, ['ID', 'Имя', 'Телефон', 'Email', 'Теги', 'Каналы', 'Дата создания']);
+            
+            // Data
+            foreach ($clients as $client) {
+                $tags = $client->tags->pluck('name')->filter()->join(', ') ?: '';
+                $channels = $client->chats->pluck('channel.name')->filter()->unique()->join(', ') ?: '';
+                
+                fputcsv($file, [
+                    $client->id,
+                    $client->name ?? '',
+                    $client->phone ?? '',
+                    $client->email ?? '',
+                    $tags,
+                    $channels,
+                    $client->created_at ? $client->created_at->format('Y-m-d H:i:s') : '',
+                ]);
+            }
+            
+            fclose($file);
+        };
+        
+        return response()->stream($callback, 200, $headers);
+    }
 
-        $responseTimes = [];
-        foreach ($chats as $chat) {
-            $messages = $chat->messages;
-            if ($messages->count() >= 2) {
-                $incoming = $messages->firstWhere('direction', 'incoming');
-                $outgoing = $messages->firstWhere('direction', 'outgoing');
-
-                if ($incoming && $outgoing && $outgoing->created_at > $incoming->created_at) {
-                    $responseTimes[] = $outgoing->created_at->diffInMinutes($incoming->created_at);
-                }
+    private function buildFilterQuery(Request $request)
+    {
+        $query = Client::query();
+        
+        // Tags - must have (client must have ALL specified tags)
+        if ($request->boolean('enableTags') && $request->has('has_tag_ids') && !empty($request->has_tag_ids)) {
+            $tagIds = is_array($request->has_tag_ids) ? $request->has_tag_ids : [$request->has_tag_ids];
+            foreach ($tagIds as $tagId) {
+                $query->whereHas('tags', function($q) use ($tagId) {
+                    $q->where('tags.id', $tagId);
+                });
             }
         }
-
-        return count($responseTimes) > 0 ? round(array_sum($responseTimes) / count($responseTimes)) : 0;
+        
+        // Tags - must not have
+        if ($request->boolean('enableNotTags') && $request->has('not_has_tag_ids') && !empty($request->not_has_tag_ids)) {
+            $tagIds = is_array($request->not_has_tag_ids) ? $request->not_has_tag_ids : [$request->not_has_tag_ids];
+            $query->whereDoesntHave('tags', function($q) use ($tagIds) {
+                $q->whereIn('tags.id', $tagIds);
+            });
+        }
+        
+        // Client info search
+        if ($request->boolean('enableClientInfo') && $request->filled('client_info_text')) {
+            $field = $request->get('client_info_field', 'name');
+            $text = $request->get('client_info_text');
+            
+            if ($field === 'id') {
+                if (is_numeric($text)) {
+                    $query->where('id', $text);
+                } else {
+                    $query->where('id', 'like', "%{$text}%");
+                }
+            } else {
+                $query->where($field, 'like', "%{$text}%");
+            }
+        }
+        
+        // Messenger type
+        if ($request->boolean('enableMessenger') && $request->filled('messenger_type')) {
+            $messengerType = $request->get('messenger_type');
+            $query->whereHas('chats.channel', function($q) use ($messengerType) {
+                $q->where('type', $messengerType);
+            });
+        }
+        
+        // Channel
+        if ($request->boolean('enableChannel') && $request->filled('channel_id')) {
+            $channelId = $request->get('channel_id');
+            $query->whereHas('chats', function($q) use ($channelId) {
+                $q->where('channel_id', $channelId);
+            });
+        }
+        
+        // First message date range
+        if ($request->boolean('enableFirstMessage')) {
+            if ($request->filled('first_message_from')) {
+                $fromDate = \Carbon\Carbon::parse($request->get('first_message_from'))->startOfDay();
+                $query->whereHas('chats', function($q) use ($fromDate) {
+                    $q->where('created_at', '>=', $fromDate);
+                });
+            }
+            if ($request->filled('first_message_to')) {
+                $toDate = \Carbon\Carbon::parse($request->get('first_message_to'))->endOfDay();
+                $query->whereHas('chats', function($q) use ($toDate) {
+                    $q->where('created_at', '<=', $toDate);
+                });
+            }
+        }
+        
+        // Operators
+        if ($request->boolean('enableOperators') && $request->has('operator_ids') && !empty($request->operator_ids)) {
+            $operatorIds = is_array($request->operator_ids) ? $request->operator_ids : [$request->operator_ids];
+            $query->whereHas('chats', function($q) use ($operatorIds) {
+                $q->whereIn('operator_id', $operatorIds);
+            });
+        }
+        
+        // Exclude active chats
+        if ($request->boolean('exclude_active_chats')) {
+            $query->whereDoesntHave('chats', function($q) {
+                $q->whereIn('status', ['new', 'open', 'pending']);
+            });
+        }
+        
+        // Limit quantity
+        if ($request->boolean('enableLimit') && $request->filled('limit_quantity')) {
+            $limit = (int) $request->get('limit_quantity');
+            if ($limit > 0) {
+                $query->limit($limit);
+            }
+        }
+        
+        return $query;
     }
 }

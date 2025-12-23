@@ -550,9 +550,13 @@ class TelegramService
         }
 
         // Get or create client
-        $client = Client::firstOrCreate(
-            ['external_id' => 'tg_' . $telegramUser['id']],
-            [
+        $clientWasNew = false;
+        $client = Client::where('external_id', 'tg_' . $telegramUser['id'])->first();
+        
+        if (!$client) {
+            // Client is new - create it
+            $client = Client::create([
+                'external_id' => 'tg_' . $telegramUser['id'],
                 'name' => trim(($telegramUser['first_name'] ?? '') . ' ' . ($telegramUser['last_name'] ?? '')),
                 'avatar' => null,
                 'metadata' => [
@@ -560,14 +564,19 @@ class TelegramService
                     'telegram_username' => $telegramUser['username'] ?? null,
                     'telegram_language' => $telegramUser['language_code'] ?? null,
                 ],
-            ]
-        );
-
-        // Update client name if changed
-        $newName = trim(($telegramUser['first_name'] ?? '') . ' ' . ($telegramUser['last_name'] ?? ''));
-        if ($client->name !== $newName && $newName) {
-            $client->update(['name' => $newName]);
+            ]);
+            $clientWasNew = true;
+        } else {
+            // Update client name if changed
+            $newName = trim(($telegramUser['first_name'] ?? '') . ' ' . ($telegramUser['last_name'] ?? ''));
+            if ($client->name !== $newName && $newName) {
+                $client->update(['name' => $newName]);
+            }
         }
+
+        // Check if client has other chats BEFORE creating new chat
+        // This is important to determine if we should skip automations
+        $clientHasOtherChats = !$clientWasNew && $client->chats()->where('channel_id', '!=', $channel->id)->exists();
 
         // Get or create chat
         $isNewChat = false;
@@ -654,6 +663,47 @@ class TelegramService
         $automationService = app(AutomationService::class);
         $automationService->checkPausedAutomation($chat, $newMessage);
         
+        // Check if automations are disabled for this channel
+        $settings = $channel->settings ?? [];
+        $automationsDisabled = $settings['disable_automations'] ?? false;
+        
+        // Check if client already existed and this is first contact with this bot
+        // If client wrote to other bots before, don't trigger automations for this bot
+        $shouldSkipAutomations = false;
+        
+        if ($clientHasOtherChats && $isNewChat) {
+            // Client already exists and wrote to other bots, and this is first contact with this bot
+            $shouldSkipAutomations = true;
+            Log::info('Client already exists with other bots - skipping automations for new chat', [
+                'channel_id' => $channel->id,
+                'channel_name' => $channel->name,
+                'client_id' => $client->id,
+                'client_was_new' => $clientWasNew,
+                'is_new_chat' => $isNewChat,
+                'client_has_other_chats' => $clientHasOtherChats,
+            ]);
+        }
+        
+        Log::info('Checking automation settings', [
+            'channel_id' => $channel->id,
+            'channel_name' => $channel->name,
+            'settings' => $settings,
+            'disable_automations' => $automationsDisabled,
+            'client_was_new' => $clientWasNew,
+            'client_has_other_chats' => $clientHasOtherChats,
+            'is_new_chat' => $isNewChat,
+            'should_skip_automations' => $shouldSkipAutomations,
+        ]);
+        
+        if ($automationsDisabled || $shouldSkipAutomations) {
+            Log::info('Automations disabled or skipped - not triggering automations', [
+                'channel_id' => $channel->id,
+                'channel_name' => $channel->name,
+                'reason' => $automationsDisabled ? 'channel_setting' : 'client_exists_elsewhere',
+            ]);
+            return; // Don't trigger automations, just save the message
+        }
+        
         // Trigger automations
         $this->triggerAutomations($chat, $newMessage, $isNewChat);
     }
@@ -663,6 +713,19 @@ class TelegramService
      */
     protected function triggerAutomations(Chat $chat, Message $message, bool $isNewChat): void
     {
+        // Double check: verify automations are not disabled for this channel
+        $channel = $chat->channel;
+        $settings = $channel->settings ?? [];
+        $automationsDisabled = $settings['disable_automations'] ?? false;
+        
+        if ($automationsDisabled) {
+            Log::info('Automations disabled for channel, skipping trigger', [
+                'channel_id' => $channel->id,
+                'channel_name' => $channel->name,
+            ]);
+            return;
+        }
+        
         try {
             $automationService = app(AutomationService::class);
 

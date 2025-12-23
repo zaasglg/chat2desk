@@ -43,6 +43,8 @@ import {
     Search,
     MailOpen,
     Smile,
+    Tag as TagIcon,
+    Filter,
 } from 'lucide-react';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Loader2, Image as ImageIcon, FileText, Film, X as XIcon } from 'lucide-react';
@@ -58,6 +60,7 @@ interface Props {
     filters: {
         category?: string;
         search?: string;
+        tag_ids?: number | number[];
     };
 }
 
@@ -113,6 +116,12 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
     const [selectedGroup, setSelectedGroup] = useState<number | null>(null);
     const [assigning, setAssigning] = useState(false);
     const [searchQuery, setSearchQuery] = useState(filters.search || '');
+    const [selectedTagIds, setSelectedTagIds] = useState<number[]>(() => {
+        const tagIds = filters.tag_ids;
+        return tagIds ? (Array.isArray(tagIds) ? tagIds : [tagIds]).map(Number) : [];
+    });
+    const [tagFilterOpen, setTagFilterOpen] = useState(false);
+    const [tagFilterSearch, setTagFilterSearch] = useState('');
     const [lightboxImage, setLightboxImage] = useState<string | null>(null);
     const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
     const [uploadProgress, setUploadProgress] = useState<number>(0);
@@ -139,6 +148,19 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
         }, 500);
         return () => clearTimeout(timer);
     }, [searchQuery]);
+
+    // Handle tag filter change
+    const handleTagFilterChange = (tagId: number) => {
+        const newTagIds = selectedTagIds.includes(tagId)
+            ? selectedTagIds.filter(id => id !== tagId)
+            : [...selectedTagIds, tagId];
+        setSelectedTagIds(newTagIds);
+        
+        router.get(`/chats/${chat.id}`, {
+            ...filters,
+            tag_ids: newTagIds.length > 0 ? newTagIds : undefined,
+        }, { preserveState: true, preserveScroll: true });
+    };
 
     // Polling для получения новых сообщений
     useEffect(() => {
@@ -615,7 +637,10 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
                                 variant={!filters.category || filters.category === 'all' ? 'default' : 'outline'}
                                 size="sm"
                                 className="flex-1"
-                                onClick={() => router.get(chat.id === 0 ? '/chats' : `/chats/${chat.id}`, { category: 'all' })}
+                                onClick={() => router.get(chat.id === 0 ? '/chats' : `/chats/${chat.id}`, { 
+                                    category: 'all',
+                                    tag_ids: filters.tag_ids,
+                                })}
                             >
                                 Все чаты
                                 {stats.all > 0 && (
@@ -628,7 +653,10 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
                                 variant={filters.category === 'unread' ? 'default' : 'outline'}
                                 size="sm"
                                 className="flex-1"
-                                onClick={() => router.get(chat.id === 0 ? '/chats' : `/chats/${chat.id}`, { category: 'unread' })}
+                                onClick={() => router.get(chat.id === 0 ? '/chats' : `/chats/${chat.id}`, { 
+                                    category: 'unread',
+                                    tag_ids: filters.tag_ids,
+                                })}
                             >
                                 Непрочитанные
                                 {stats.unread > 0 && (
@@ -647,6 +675,79 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
                                 className="pl-9"
                             />
                         </div>
+                        <Popover open={tagFilterOpen} onOpenChange={setTagFilterOpen}>
+                            <PopoverTrigger asChild>
+                                <Button variant="outline" size="sm" className="w-full justify-start">
+                                    <Filter className="mr-2 h-4 w-4" />
+                                    Фильтр по тегам
+                                    {selectedTagIds.length > 0 && (
+                                        <Badge variant="secondary" className="ml-2">
+                                            {selectedTagIds.length}
+                                        </Badge>
+                                    )}
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-80 p-0" align="start">
+                                <div className="p-3 border-b">
+                                    <div className="relative">
+                                        <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                        <Input
+                                            placeholder="Поиск тегов..."
+                                            value={tagFilterSearch}
+                                            onChange={(e) => setTagFilterSearch(e.target.value)}
+                                            className="pl-8"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="p-2 max-h-60 overflow-y-auto">
+                                    {allTags
+                                        .filter(tag => tag.name.toLowerCase().includes(tagFilterSearch.toLowerCase()))
+                                        .map((tag) => (
+                                            <div
+                                                key={tag.id}
+                                                className="flex items-center gap-2 p-2 rounded hover:bg-accent cursor-pointer"
+                                                onClick={() => handleTagFilterChange(tag.id)}
+                                            >
+                                                <Checkbox 
+                                                    checked={selectedTagIds.includes(tag.id)}
+                                                    onCheckedChange={() => handleTagFilterChange(tag.id)}
+                                                />
+                                                <Badge
+                                                    variant="secondary"
+                                                    style={{ backgroundColor: tag.color + '20', color: tag.color }}
+                                                    className="flex-1"
+                                                >
+                                                    {tag.name}
+                                                </Badge>
+                                            </div>
+                                        ))}
+                                    {allTags.filter(tag => tag.name.toLowerCase().includes(tagFilterSearch.toLowerCase())).length === 0 && (
+                                        <p className="text-sm text-muted-foreground text-center py-4">
+                                            Теги не найдены
+                                        </p>
+                                    )}
+                                </div>
+                                {selectedTagIds.length > 0 && (
+                                    <div className="p-2 border-t">
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="w-full"
+                                            onClick={() => {
+                                                setSelectedTagIds([]);
+                                                router.get(`/chats/${chat.id}`, {
+                                                    ...filters,
+                                                    tag_ids: undefined,
+                                                }, { preserveState: true, preserveScroll: true });
+                                            }}
+                                        >
+                                            <X className="mr-2 h-4 w-4" />
+                                            Очистить фильтр
+                                        </Button>
+                                    </div>
+                                )}
+                            </PopoverContent>
+                        </Popover>
                     </div>
 
                     {/* Chats List */}
@@ -682,11 +783,18 @@ export default function ChatShow({ chat, allTags, chats, stats, filters }: Props
                                                     </Avatar>
                                                     <div className="flex-1 min-w-0">
                                                         <div className="flex items-center justify-between gap-2 mb-1">
-                                                            <span className={`font-medium truncate ${
-                                                                hasUnread ? 'font-semibold' : ''
-                                                            }`}>
-                                                                {chatItem.client?.name || `Клиент #${chatItem.client_id}`}
-                                                            </span>
+                                                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                                                                <span className={`font-medium truncate ${
+                                                                    hasUnread ? 'font-semibold' : ''
+                                                                }`}>
+                                                                    {chatItem.client?.name || `Клиент #${chatItem.client_id}`}
+                                                                </span>
+                                                                {chatItem.is_duplicate && (
+                                                                    <Badge variant="outline" className="text-xs px-1.5 py-0 h-5 flex-shrink-0">
+                                                                        Дубль чат
+                                                                    </Badge>
+                                                                )}
+                                                            </div>
                                                             <div className="flex items-center gap-1">
                                                                 <span className="text-xs text-muted-foreground flex-shrink-0">
                                                                     {chatItem.last_message_at

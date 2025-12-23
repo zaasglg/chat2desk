@@ -48,12 +48,12 @@ class TelegramWebhookController extends Controller
 
         // Handle message
         if (isset($update['message'])) {
-            $this->handleMessage($channel, $update['message']);
+            $telegramService->handleMessage($channel, $update['message']);
         }
 
         // Handle edited message
         if (isset($update['edited_message'])) {
-            $this->handleMessage($channel, $update['edited_message'], true);
+            $telegramService->handleMessage($channel, $update['edited_message'], true);
         }
 
         return response()->json(['ok' => true]);

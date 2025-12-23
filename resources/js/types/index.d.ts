@@ -108,6 +108,7 @@ export interface Chat {
     operator?: User;
     messages?: Message[];
     latest_message?: Message | Message[];
+    is_duplicate?: boolean;
 }
 
 export interface Message {

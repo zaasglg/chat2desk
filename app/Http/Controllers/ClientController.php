@@ -59,41 +59,82 @@ class ClientController extends Controller
 
     public function syncTags(Request $request, Client $client)
     {
-        $request->validate([
-            'tag_ids' => 'array',
-            'tag_ids.*' => 'exists:tags,id',
-        ]);
+        try {
+            $request->validate([
+                'tag_ids' => 'nullable|array',
+                'tag_ids.*' => 'exists:tags,id',
+            ]);
 
-        // Get current tag IDs before sync
-        $oldTagIds = $client->tags()->pluck('tags.id')->toArray();
-        $newTagIds = $request->tag_ids ?? [];
+            // Get current tag IDs before sync (as integers)
+            $oldTagIds = $client->tags()->pluck('tags.id')->map(fn($id) => (int)$id)->toArray();
+            $newTagIds = array_map('intval', $request->tag_ids ?? []);
 
-        // Sync tags
-        $client->tags()->sync($newTagIds);
+            \Log::info('syncTags called', [
+                'client_id' => $client->id,
+                'old_tag_ids' => $oldTagIds,
+                'new_tag_ids' => $newTagIds,
+            ]);
 
-        // Find added and removed tags
-        $addedTagIds = array_diff($newTagIds, $oldTagIds);
-        $removedTagIds = array_diff($oldTagIds, $newTagIds);
+            // Sync tags
+            $client->tags()->sync($newTagIds);
 
-        // Trigger automations for tag changes
-        if (!empty($addedTagIds) || !empty($removedTagIds)) {
-            // Find an active chat for this client to trigger automations
-            $chat = $client->chats()->orderBy('last_message_at', 'desc')->first();
-            
-            if ($chat) {
-                $automationService = app(AutomationService::class);
+            // Find added and removed tags
+            $addedTagIds = array_values(array_diff($newTagIds, $oldTagIds));
+            $removedTagIds = array_values(array_diff($oldTagIds, $newTagIds));
+
+            \Log::info('Tag changes detected', [
+                'client_id' => $client->id,
+                'added_tag_ids' => $addedTagIds,
+                'removed_tag_ids' => $removedTagIds,
+            ]);
+
+            // Trigger automations for tag changes
+            if (!empty($addedTagIds) || !empty($removedTagIds)) {
+                // Find an active chat for this client to trigger automations
+                $chat = $client->chats()->orderBy('last_message_at', 'desc')->first();
                 
-                if (!empty($addedTagIds)) {
-                    $automationService->triggerTagAdded($chat, array_values($addedTagIds));
-                }
+                \Log::info('Looking for chat to trigger automation', [
+                    'client_id' => $client->id,
+                    'chat_found' => $chat ? true : false,
+                    'chat_id' => $chat?->id,
+                    'chat_channel_id' => $chat?->channel_id,
+                ]);
                 
-                if (!empty($removedTagIds)) {
-                    $automationService->triggerTagRemoved($chat, array_values($removedTagIds));
+                if ($chat) {
+                    $automationService = app(AutomationService::class);
+                    
+                    if (!empty($addedTagIds)) {
+                        \Log::info('Calling triggerTagAdded', [
+                            'chat_id' => $chat->id,
+                            'tag_ids' => $addedTagIds,
+                        ]);
+                        $automationService->triggerTagAdded($chat, $addedTagIds);
+                    }
+                    
+                    if (!empty($removedTagIds)) {
+                        \Log::info('Calling triggerTagRemoved', [
+                            'chat_id' => $chat->id,
+                            'tag_ids' => $removedTagIds,
+                        ]);
+                        $automationService->triggerTagRemoved($chat, $removedTagIds);
+                    }
+                } else {
+                    \Log::warning('No chat found for client, cannot trigger tag automations', [
+                        'client_id' => $client->id,
+                    ]);
                 }
             }
-        }
 
-        return response()->json(['success' => true]);
+            return response()->json(['success' => true]);
+        } catch (\Exception $e) {
+            \Log::error('syncTags error', [
+                'client_id' => $client->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            
+            return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
+        }
     }
 
     public function updateNotes(Request $request, Client $client)
@@ -109,8 +150,12 @@ class ClientController extends Controller
 
     public function destroy(Client $client)
     {
+        // Detach all tags before deletion
+        $client->tags()->detach();
+        
+        // Delete client (chats and messages will be deleted automatically via cascade)
         $client->delete();
 
-        return redirect()->route('clients.index')->with('success', 'Клиент удален');
+        return redirect()->route('clients.index')->with('success', 'Клиент и все его чаты удалены');
     }
 }
