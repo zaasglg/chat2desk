@@ -10,12 +10,18 @@ interface VirtualChatListProps {
     onMarkAsUnread: (chatId: number, e: React.MouseEvent) => void;
 }
 
-// Estimate height based on whether chat has tags
+// Estimate height based on whether chat has tags and how many
 function estimateItemHeight(chat: Chat): number {
     const baseHeight = 76; // Base height without tags
-    const tagRowHeight = 28; // Height for tags row
-    const hasTags = chat.client?.tags && chat.client.tags.length > 0;
-    return hasTags ? baseHeight + tagRowHeight : baseHeight;
+    const tagRowHeight = 24; // Height for each tags row
+    const tagsPerRow = 3; // Approximate tags per row
+
+    const tags = chat.client?.tags || [];
+    if (tags.length === 0) return baseHeight;
+
+    // Calculate number of rows needed for tags
+    const tagRows = Math.ceil(tags.length / tagsPerRow);
+    return baseHeight + (tagRows * tagRowHeight);
 }
 
 // Session storage key for scroll position
