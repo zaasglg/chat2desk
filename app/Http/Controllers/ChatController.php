@@ -188,21 +188,34 @@ class ChatController extends Controller
 
         $chats = $chatsQuery->limit(100)->get();
         
-        // Mark duplicate chats (client already wrote to other bots before this chat)
-        $chats = $chats->map(function ($chat) {
-            if ($chat->client) {
-                // Check if client has other chats created before this chat
-                $hasOtherChats = $chat->client->chats()
-                    ->where('id', '!=', $chat->id)
-                    ->where('created_at', '<', $chat->created_at)
-                    ->exists();
-                
-                $chat->is_duplicate = $hasOtherChats;
-            } else {
+        // Mark duplicate chats using a single optimized query instead of N+1
+        // Get all client IDs and their first chat creation dates in one query
+        $clientIds = $chats->pluck('client_id')->filter()->unique()->values()->toArray();
+        
+        if (!empty($clientIds)) {
+            // Get the first chat creation date for each client in a single query
+            $firstChatDates = \DB::table('chats')
+                ->select('client_id', \DB::raw('MIN(created_at) as first_chat_at'))
+                ->whereIn('client_id', $clientIds)
+                ->groupBy('client_id')
+                ->pluck('first_chat_at', 'client_id');
+            
+            // Mark duplicates by comparing with the first chat date
+            $chats = $chats->map(function ($chat) use ($firstChatDates) {
+                if ($chat->client_id && isset($firstChatDates[$chat->client_id])) {
+                    $firstChatAt = $firstChatDates[$chat->client_id];
+                    $chat->is_duplicate = $chat->created_at->gt($firstChatAt);
+                } else {
+                    $chat->is_duplicate = false;
+                }
+                return $chat;
+            });
+        } else {
+            $chats = $chats->map(function ($chat) {
                 $chat->is_duplicate = false;
-            }
-            return $chat;
-        });
+                return $chat;
+            });
+        }
         
         $channels = Channel::where('type', 'telegram')
             ->where('is_active', true)
