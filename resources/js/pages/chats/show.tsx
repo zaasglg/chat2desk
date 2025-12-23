@@ -1240,11 +1240,12 @@ function MessageBubble({ message, onImageClick }: { message: Message; onImageCli
         const d = new Date(date);
         const day = d.getDate().toString().padStart(2, '0');
         const month = (d.getMonth() + 1).toString().padStart(2, '0');
+        const year = d.getFullYear().toString().slice(-2);
         const time = d.toLocaleTimeString('ru-RU', {
             hour: '2-digit',
             minute: '2-digit',
         });
-        return `${day}.${month}, ${time}`;
+        return `${day}.${month}.${year}, ${time}`;
     };
 
     const StatusIcon = () => {
