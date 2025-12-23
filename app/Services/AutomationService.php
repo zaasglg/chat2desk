@@ -103,6 +103,8 @@ class AutomationService
 
     /**
      * Trigger automation when tag is added to client
+     * NOTE: This method is only called when tags are added manually via UI
+     * Automatic tag additions (via buttons/automations) do NOT trigger this
      */
     public function triggerTagAdded(Chat $chat, array $tagIds): void
     {

@@ -57,9 +57,9 @@ interface StepConfig {
     tag_name?: string; // Backward compatibility
     tag_ids?: number[]; // Multiple tags
     operator_id?: number;
-    buttons?: Array<{ 
-        text: string; 
-        url?: string; 
+    buttons?: Array<{
+        text: string;
+        url?: string;
         action?: 'send_photo' | 'send_video' | 'send_file' | 'send_text' | 'add_tag' | 'remove_tag';
         action_config?: {
             url?: string;
@@ -144,7 +144,7 @@ export default function AutomationsEdit({ automation, channels, tags, operators 
             config: type === 'delay' ? { delay_seconds: 5 } : type === 'group' ? { name: 'Новая группа', steps: [] } : {},
             isExpanded: type === 'group' ? true : undefined,
         };
-        
+
         if (groupId) {
             // Добавляем шаг в группу
             setSteps(steps.map(step => {
@@ -198,7 +198,7 @@ export default function AutomationsEdit({ automation, channels, tags, operators 
                 return step;
             });
         };
-        
+
         setSteps(updateStepInList(steps));
     };
 
@@ -232,7 +232,7 @@ export default function AutomationsEdit({ automation, channels, tags, operators 
                 return step;
             });
         };
-        
+
         setSteps(updateStepInList(steps));
     };
 
@@ -316,10 +316,10 @@ export default function AutomationsEdit({ automation, channels, tags, operators 
                         .filter((btn: any) => {
                             // Фильтруем кнопки без текста
                             if (!btn.text) return false;
-                            
+
                             // Если есть URL, кнопка валидна
                             if (btn.url) return true;
-                            
+
                             // Если есть action, проверяем наличие необходимых данных в action_config
                             if (btn.action && btn.action_config) {
                                 const config = btn.action_config;
@@ -337,7 +337,7 @@ export default function AutomationsEdit({ automation, channels, tags, operators 
                                         return false;
                                 }
                             }
-                            
+
                             return false;
                         })
                         .map((btn: any) => {
@@ -352,7 +352,7 @@ export default function AutomationsEdit({ automation, channels, tags, operators 
                             return cleanedBtn;
                         });
                 }
-                
+
                 return {
                     step_id: step.id,
                     type: step.type,
@@ -372,7 +372,7 @@ export default function AutomationsEdit({ automation, channels, tags, operators 
     const renderStep = (step: Step, index: number, groupId: string | undefined, level: number = 0) => {
         const stepType = getStepType(step.type);
         const groupSteps = step.type === 'group' ? step.config.steps || [] : [];
-        
+
         return (
             <div key={step.id} className={level > 0 ? 'ml-4 border-l-2 border-border pl-4' : ''}>
                 {step.type === 'group' ? (
@@ -548,13 +548,13 @@ export default function AutomationsEdit({ automation, channels, tags, operators 
                                         const tagIds = step.config.tag_ids || [];
                                         const tagId = step.config.tag_id;
                                         const tagName = step.config.tag_name;
-                                        
+
                                         if (tagIds.length > 0) {
                                             const selectedTags = tagIds
                                                 .map(id => tags.find(t => t.id === id)?.name)
                                                 .filter(Boolean);
-                                            return selectedTags.length > 0 
-                                                ? selectedTags.join(', ') 
+                                            return selectedTags.length > 0
+                                                ? selectedTags.join(', ')
                                                 : 'Выберите теги...';
                                         } else if (tagId) {
                                             const tag = tags.find(t => t.id === tagId);
@@ -581,7 +581,7 @@ export default function AutomationsEdit({ automation, channels, tags, operators 
                             )}
                             {step.type === 'assign_operator' && (
                                 <p className="text-sm text-muted-foreground">
-                                    {step.config.operator_id 
+                                    {step.config.operator_id
                                         ? operators.find(op => op.id === step.config.operator_id)?.name || 'Оператор не выбран'
                                         : 'Выберите оператора...'}
                                 </p>
@@ -589,18 +589,18 @@ export default function AutomationsEdit({ automation, channels, tags, operators 
                         </CardContent>
                     </Card>
                 )}
-                
+
                 {/* Connection Line - только для верхнего уровня */}
                 {level === 0 && (() => {
-                    const parentSteps = groupId 
+                    const parentSteps = groupId
                         ? (steps.find(s => s.id === groupId)?.config.steps || [])
                         : steps;
                     return index < parentSteps.length - 1;
                 })() && (
-                    <div className="flex justify-center pt-4">
-                        <div className="w-0.5 h-8 bg-border" />
-                    </div>
-                )}
+                        <div className="flex justify-center pt-4">
+                            <div className="w-0.5 h-8 bg-border" />
+                        </div>
+                    )}
             </div>
         );
     };
@@ -754,11 +754,11 @@ export default function AutomationsEdit({ automation, channels, tags, operators 
                     {/* Center - Steps Flow */}
                     <div className="flex-1 flex flex-col overflow-hidden bg-muted/30">
 
-                        
+
 
                         {/* Scrollable Steps */}
                         <div className="flex-1 overflow-y-auto p-6 pt-0">
-                            
+
                             {/* Fixed Start Node */}
                             <div className="p-6 pb-0 flex-shrink-0">
                                 <div className="max-w-md mx-auto">
@@ -769,7 +769,7 @@ export default function AutomationsEdit({ automation, channels, tags, operators 
                                     </div>
                                 </div>
                             </div>
-                            
+
                             {steps.length > 0 && (
                                 <div className="flex justify-center pt-4">
                                     <div className="w-0.5 h-8 bg-border" />
@@ -846,532 +846,486 @@ export default function AutomationsEdit({ automation, channels, tags, operators 
                                             </div>
                                         </div>
                                     )}
-                                    
+
                                     {selectedStep.type !== 'group' && (
                                         <>
-                                    {selectedStep.type === 'send_text' && (
-                                        <div>
-                                            <Label>Текст сообщения</Label>
-                                            <Textarea
-                                                className="mt-1"
-                                                placeholder="Введите текст..."
-                                                value={selectedStep.config.text || ''}
-                                                onChange={(e) => updateStepConfig(selectedStep.id, 'text', e.target.value)}
-                                                rows={5}
-                                            />
-                                        </div>
-                                    )}
-
-                                    {selectedStep.type === 'send_text_with_buttons' && (
-                                        <div className="space-y-4">
-                                            <div>
-                                                <Label>Изображение (необязательно)</Label>
-                                                <FileUpload
-                                                    type="image"
-                                                    value={selectedStep.config.url || ''}
-                                                    onChange={(url, filename) => {
-                                                        updateStepConfigMultiple(selectedStep.id, {
-                                                            url,
-                                                            filename: filename || ''
-                                                        });
-                                                    }}
-                                                    onDelete={() => {
-                                                        updateStepConfig(selectedStep.id, 'url', '');
-                                                        updateStepConfig(selectedStep.id, 'filename', '');
-                                                    }}
-                                                />
-                                            </div>
-
-                                            <div>
-                                                <Label>Текст сообщения</Label>
-                                                <Textarea
-                                                    className="mt-1"
-                                                    placeholder="Введите текст..."
-                                                    value={selectedStep.config.text || ''}
-                                                    onChange={(e) => updateStepConfig(selectedStep.id, 'text', e.target.value)}
-                                                    rows={5}
-                                                />
-                                            </div>
-
-                                            <div>
-                                                <div className="flex items-center justify-between mb-2">
-                                                    <Label>Инлайн кнопки</Label>
-                                                    <Button
-                                                        type="button"
-                                                        variant="outline"
-                                                        size="sm"
-                                                        onClick={() => {
-                                                            const currentButtons = selectedStep.config.buttons || [];
-                                                            updateStepConfig(selectedStep.id, 'buttons', [
-                                                                ...currentButtons,
-                                                                { text: '' }
-                                                            ]);
-                                                        }}
-                                                    >
-                                                        <Plus className="h-4 w-4 mr-1" />
-                                                        Добавить кнопку
-                                                    </Button>
+                                            {selectedStep.type === 'send_text' && (
+                                                <div>
+                                                    <Label>Текст сообщения</Label>
+                                                    <Textarea
+                                                        className="mt-1"
+                                                        placeholder="Введите текст..."
+                                                        value={selectedStep.config.text || ''}
+                                                        onChange={(e) => updateStepConfig(selectedStep.id, 'text', e.target.value)}
+                                                        rows={5}
+                                                    />
                                                 </div>
+                                            )}
 
-                                                <div className="space-y-2">
-                                                    {(selectedStep.config.buttons || []).map((button: any, index: number) => (
-                                                        <div key={index} className="border rounded-lg p-3 space-y-2">
-                                                            <div className="flex items-center justify-between">
-                                                                <Label className="text-sm">Кнопка {index + 1}</Label>
-                                                                <Button
-                                                                    type="button"
-                                                                    variant="ghost"
-                                                                    size="sm"
-                                                                    onClick={() => {
-                                                                        const currentButtons = selectedStep.config.buttons || [];
-                                                                        const newButtons = currentButtons.filter((_: any, i: number) => i !== index);
-                                                                        updateStepConfig(selectedStep.id, 'buttons', newButtons);
-                                                                    }}
-                                                                >
-                                                                    <Trash2 className="h-4 w-4" />
-                                                                </Button>
-                                                            </div>
-                                                            <div>
-                                                                <Label className="text-xs">Текст кнопки</Label>
-                                                                <Input
-                                                                    className="mt-1"
-                                                                    placeholder="Текст кнопки"
-                                                                    value={button.text || ''}
-                                                                    onChange={(e) => {
-                                                                        const currentButtons = selectedStep.config.buttons || [];
-                                                                        const newButtons = [...currentButtons];
-                                                                        newButtons[index] = { ...newButtons[index], text: e.target.value };
-                                                                        updateStepConfig(selectedStep.id, 'buttons', newButtons);
-                                                                    }}
-                                                                />
-                                                            </div>
-                                                            <div>
-                                                                <Label className="text-xs">Тип кнопки</Label>
-                                                                <Select
-                                                                    value={button.url !== undefined ? 'url' : (button.action || 'url')}
-                                                                    onValueChange={(value) => {
-                                                                        const currentButtons = selectedStep.config.buttons || [];
-                                                                        const newButtons = [...currentButtons];
-                                                                        if (value === 'url') {
-                                                                            newButtons[index] = { text: newButtons[index].text, url: '' };
-                                                                            delete newButtons[index].action;
-                                                                            delete newButtons[index].action_config;
-                                                                        } else {
-                                                                            newButtons[index] = { 
-                                                                                text: newButtons[index].text, 
-                                                                                action: value as any,
-                                                                                action_config: {}
-                                                                            };
-                                                                            delete newButtons[index].url;
-                                                                        }
-                                                                        updateStepConfig(selectedStep.id, 'buttons', newButtons);
-                                                                    }}
-                                                                >
-                                                                    <SelectTrigger className="mt-1">
-                                                                        <SelectValue />
-                                                                    </SelectTrigger>
-                                                                    <SelectContent>
-                                                                        <SelectItem value="url">URL (ссылка)</SelectItem>
-                                                                        <SelectItem value="send_photo">Отправить фото</SelectItem>
-                                                                        <SelectItem value="send_video">Отправить видео</SelectItem>
-                                                                        <SelectItem value="send_file">Отправить файл</SelectItem>
-                                                                        <SelectItem value="send_text">Отправить текст</SelectItem>
-                                                                        <SelectItem value="add_tag">Добавить теги</SelectItem>
-                                                                        <SelectItem value="remove_tag">Удалить теги</SelectItem>
-                                                                    </SelectContent>
-                                                                </Select>
-                                                            </div>
-                                                            {button.url !== undefined && (
-                                                                <div>
-                                                                    <Label className="text-xs">URL</Label>
-                                                                    <Input
-                                                                        className="mt-1"
-                                                                        placeholder="https://example.com"
-                                                                        value={button.url || ''}
-                                                                        onChange={(e) => {
-                                                                            const currentButtons = selectedStep.config.buttons || [];
-                                                                            const newButtons = [...currentButtons];
-                                                                            newButtons[index] = { ...newButtons[index], url: e.target.value };
-                                                                            updateStepConfig(selectedStep.id, 'buttons', newButtons);
-                                                                        }}
-                                                                    />
-                                                                </div>
-                                                            )}
-                                                            {button.action === 'send_photo' && (
-                                                                <div>
-                                                                    <Label className="text-xs">URL изображения</Label>
-                                                                    <Input
-                                                                        className="mt-1"
-                                                                        placeholder="https://example.com/image.jpg"
-                                                                        value={button.action_config?.url || ''}
-                                                                        onChange={(e) => {
-                                                                            const currentButtons = selectedStep.config.buttons || [];
-                                                                            const newButtons = [...currentButtons];
-                                                                            newButtons[index] = { 
-                                                                                ...newButtons[index], 
-                                                                                action_config: { ...newButtons[index].action_config, url: e.target.value }
-                                                                            };
-                                                                            updateStepConfig(selectedStep.id, 'buttons', newButtons);
-                                                                        }}
-                                                                    />
-                                                                </div>
-                                                            )}
-                                                            {button.action === 'send_video' && (
-                                                                <div>
-                                                                    <Label className="text-xs">URL видео</Label>
-                                                                    <Input
-                                                                        className="mt-1"
-                                                                        placeholder="https://example.com/video.mp4"
-                                                                        value={button.action_config?.url || ''}
-                                                                        onChange={(e) => {
-                                                                            const currentButtons = selectedStep.config.buttons || [];
-                                                                            const newButtons = [...currentButtons];
-                                                                            newButtons[index] = { 
-                                                                                ...newButtons[index], 
-                                                                                action_config: { ...newButtons[index].action_config, url: e.target.value }
-                                                                            };
-                                                                            updateStepConfig(selectedStep.id, 'buttons', newButtons);
-                                                                        }}
-                                                                    />
-                                                                </div>
-                                                            )}
-                                                            {button.action === 'send_file' && (
-                                                                <div>
-                                                                    <Label className="text-xs">URL файла</Label>
-                                                                    <Input
-                                                                        className="mt-1"
-                                                                        placeholder="https://example.com/file.pdf"
-                                                                        value={button.action_config?.url || ''}
-                                                                        onChange={(e) => {
-                                                                            const currentButtons = selectedStep.config.buttons || [];
-                                                                            const newButtons = [...currentButtons];
-                                                                            newButtons[index] = { 
-                                                                                ...newButtons[index], 
-                                                                                action_config: { ...newButtons[index].action_config, url: e.target.value }
-                                                                            };
-                                                                            updateStepConfig(selectedStep.id, 'buttons', newButtons);
-                                                                        }}
-                                                                    />
-                                                                </div>
-                                                            )}
-                                                            {button.action === 'send_text' && (
-                                                                <div>
-                                                                    <Label className="text-xs">Текст сообщения</Label>
-                                                                    <Textarea
-                                                                        className="mt-1"
-                                                                        placeholder="Введите текст сообщения"
-                                                                        value={button.action_config?.text || ''}
-                                                                        onChange={(e) => {
-                                                                            const currentButtons = selectedStep.config.buttons || [];
-                                                                            const newButtons = [...currentButtons];
-                                                                            newButtons[index] = { 
-                                                                                ...newButtons[index], 
-                                                                                action_config: { ...newButtons[index].action_config, text: e.target.value }
-                                                                            };
-                                                                            updateStepConfig(selectedStep.id, 'buttons', newButtons);
-                                                                        }}
-                                                                    />
-                                                                </div>
-                                                            )}
-                                                            {(button.action === 'add_tag' || button.action === 'remove_tag') && (
-                                                                <div>
-                                                                    <Label className="text-xs">Выберите теги</Label>
-                                                                    <div className="mt-1 space-y-2 max-h-32 overflow-y-auto border rounded p-2">
-                                                                        {tags.map((tag) => {
-                                                                            const isSelected = button.action_config?.tag_ids?.includes(tag.id);
-                                                                            return (
-                                                                                <div key={tag.id} className="flex items-center space-x-2">
-                                                                                    <Checkbox
-                                                                                        checked={isSelected}
-                                                                                        onCheckedChange={(checked) => {
-                                                                                            const currentButtons = selectedStep.config.buttons || [];
-                                                                                            const newButtons = [...currentButtons];
-                                                                                            const currentTagIds = newButtons[index].action_config?.tag_ids || [];
-                                                                                            const newTagIds = checked
-                                                                                                ? [...currentTagIds, tag.id]
-                                                                                                : currentTagIds.filter((id: number) => id !== tag.id);
-                                                                                            newButtons[index] = { 
-                                                                                                ...newButtons[index], 
-                                                                                                action_config: { ...newButtons[index].action_config, tag_ids: newTagIds }
-                                                                                            };
-                                                                                            updateStepConfig(selectedStep.id, 'buttons', newButtons);
-                                                                                        }}
-                                                                                    />
-                                                                                    <Label className="text-sm cursor-pointer">
-                                                                                        <span
-                                                                                            className="inline-block px-2 py-1 rounded text-xs"
-                                                                                            style={{ backgroundColor: tag.color + '20', color: tag.color }}
-                                                                                        >
-                                                                                            {tag.name}
-                                                                                        </span>
-                                                                                    </Label>
-                                                                                </div>
-                                                                            );
-                                                                        })}
+                                            {selectedStep.type === 'send_text_with_buttons' && (
+                                                <div className="space-y-4">
+                                                    <div>
+                                                        <Label>Изображение (необязательно)</Label>
+                                                        <FileUpload
+                                                            type="image"
+                                                            value={selectedStep.config.url || ''}
+                                                            onChange={(url, filename) => {
+                                                                updateStepConfigMultiple(selectedStep.id, {
+                                                                    url,
+                                                                    filename: filename || ''
+                                                                });
+                                                            }}
+                                                            onDelete={() => {
+                                                                updateStepConfig(selectedStep.id, 'url', '');
+                                                                updateStepConfig(selectedStep.id, 'filename', '');
+                                                            }}
+                                                        />
+                                                    </div>
+
+                                                    <div>
+                                                        <Label>Текст сообщения</Label>
+                                                        <Textarea
+                                                            className="mt-1"
+                                                            placeholder="Введите текст..."
+                                                            value={selectedStep.config.text || ''}
+                                                            onChange={(e) => updateStepConfig(selectedStep.id, 'text', e.target.value)}
+                                                            rows={5}
+                                                        />
+                                                    </div>
+
+                                                    <div>
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <Label>Инлайн кнопки</Label>
+                                                            <Button
+                                                                type="button"
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() => {
+                                                                    const currentButtons = selectedStep.config.buttons || [];
+                                                                    updateStepConfig(selectedStep.id, 'buttons', [
+                                                                        ...currentButtons,
+                                                                        { text: '' }
+                                                                    ]);
+                                                                }}
+                                                            >
+                                                                <Plus className="h-4 w-4 mr-1" />
+                                                                Добавить кнопку
+                                                            </Button>
+                                                        </div>
+
+                                                        <div className="space-y-2">
+                                                            {(selectedStep.config.buttons || []).map((button: any, index: number) => (
+                                                                <div key={index} className="border rounded-lg p-3 space-y-2">
+                                                                    <div className="flex items-center justify-between">
+                                                                        <Label className="text-sm">Кнопка {index + 1}</Label>
+                                                                        <Button
+                                                                            type="button"
+                                                                            variant="ghost"
+                                                                            size="sm"
+                                                                            onClick={() => {
+                                                                                const currentButtons = selectedStep.config.buttons || [];
+                                                                                const newButtons = currentButtons.filter((_: any, i: number) => i !== index);
+                                                                                updateStepConfig(selectedStep.id, 'buttons', newButtons);
+                                                                            }}
+                                                                        >
+                                                                            <Trash2 className="h-4 w-4" />
+                                                                        </Button>
                                                                     </div>
+                                                                    <div>
+                                                                        <Label className="text-xs">Текст кнопки</Label>
+                                                                        <Input
+                                                                            className="mt-1"
+                                                                            placeholder="Текст кнопки"
+                                                                            value={button.text || ''}
+                                                                            onChange={(e) => {
+                                                                                const currentButtons = selectedStep.config.buttons || [];
+                                                                                const newButtons = [...currentButtons];
+                                                                                newButtons[index] = { ...newButtons[index], text: e.target.value };
+                                                                                updateStepConfig(selectedStep.id, 'buttons', newButtons);
+                                                                            }}
+                                                                        />
+                                                                    </div>
+                                                                    <div>
+                                                                        <Label className="text-xs">Тип кнопки</Label>
+                                                                        <Select
+                                                                            value={button.url !== undefined ? 'url' : (button.action || 'url')}
+                                                                            onValueChange={(value) => {
+                                                                                const currentButtons = selectedStep.config.buttons || [];
+                                                                                const newButtons = [...currentButtons];
+                                                                                if (value === 'url') {
+                                                                                    newButtons[index] = { text: newButtons[index].text, url: '' };
+                                                                                    delete newButtons[index].action;
+                                                                                    delete newButtons[index].action_config;
+                                                                                } else {
+                                                                                    newButtons[index] = {
+                                                                                        text: newButtons[index].text,
+                                                                                        action: value as any,
+                                                                                        action_config: {}
+                                                                                    };
+                                                                                    delete newButtons[index].url;
+                                                                                }
+                                                                                updateStepConfig(selectedStep.id, 'buttons', newButtons);
+                                                                            }}
+                                                                        >
+                                                                            <SelectTrigger className="mt-1">
+                                                                                <SelectValue />
+                                                                            </SelectTrigger>
+                                                                            <SelectContent>
+                                                                                <SelectItem value="url">URL (ссылка)</SelectItem>
+                                                                                <SelectItem value="send_photo">Отправить фото</SelectItem>
+                                                                                <SelectItem value="send_video">Отправить видео</SelectItem>
+                                                                                <SelectItem value="send_file">Отправить файл</SelectItem>
+                                                                                <SelectItem value="send_text">Отправить текст</SelectItem>
+                                                                                <SelectItem value="add_tag">Добавить теги</SelectItem>
+                                                                                <SelectItem value="remove_tag">Удалить теги</SelectItem>
+                                                                            </SelectContent>
+                                                                        </Select>
+                                                                    </div>
+                                                                    {button.url !== undefined && (
+                                                                        <div>
+                                                                            <Label className="text-xs">URL</Label>
+                                                                            <Input
+                                                                                className="mt-1"
+                                                                                placeholder="https://example.com"
+                                                                                value={button.url || ''}
+                                                                                onChange={(e) => {
+                                                                                    const currentButtons = selectedStep.config.buttons || [];
+                                                                                    const newButtons = [...currentButtons];
+                                                                                    newButtons[index] = { ...newButtons[index], url: e.target.value };
+                                                                                    updateStepConfig(selectedStep.id, 'buttons', newButtons);
+                                                                                }}
+                                                                            />
+                                                                        </div>
+                                                                    )}
+                                                                    {button.action === 'send_photo' && (
+                                                                        <div>
+                                                                            <Label className="text-xs">URL изображения</Label>
+                                                                            <Input
+                                                                                className="mt-1"
+                                                                                placeholder="https://example.com/image.jpg"
+                                                                                value={button.action_config?.url || ''}
+                                                                                onChange={(e) => {
+                                                                                    const currentButtons = selectedStep.config.buttons || [];
+                                                                                    const newButtons = [...currentButtons];
+                                                                                    newButtons[index] = {
+                                                                                        ...newButtons[index],
+                                                                                        action_config: { ...newButtons[index].action_config, url: e.target.value }
+                                                                                    };
+                                                                                    updateStepConfig(selectedStep.id, 'buttons', newButtons);
+                                                                                }}
+                                                                            />
+                                                                        </div>
+                                                                    )}
+                                                                    {button.action === 'send_video' && (
+                                                                        <div>
+                                                                            <Label className="text-xs">URL видео</Label>
+                                                                            <Input
+                                                                                className="mt-1"
+                                                                                placeholder="https://example.com/video.mp4"
+                                                                                value={button.action_config?.url || ''}
+                                                                                onChange={(e) => {
+                                                                                    const currentButtons = selectedStep.config.buttons || [];
+                                                                                    const newButtons = [...currentButtons];
+                                                                                    newButtons[index] = {
+                                                                                        ...newButtons[index],
+                                                                                        action_config: { ...newButtons[index].action_config, url: e.target.value }
+                                                                                    };
+                                                                                    updateStepConfig(selectedStep.id, 'buttons', newButtons);
+                                                                                }}
+                                                                            />
+                                                                        </div>
+                                                                    )}
+                                                                    {button.action === 'send_file' && (
+                                                                        <div>
+                                                                            <Label className="text-xs">URL файла</Label>
+                                                                            <Input
+                                                                                className="mt-1"
+                                                                                placeholder="https://example.com/file.pdf"
+                                                                                value={button.action_config?.url || ''}
+                                                                                onChange={(e) => {
+                                                                                    const currentButtons = selectedStep.config.buttons || [];
+                                                                                    const newButtons = [...currentButtons];
+                                                                                    newButtons[index] = {
+                                                                                        ...newButtons[index],
+                                                                                        action_config: { ...newButtons[index].action_config, url: e.target.value }
+                                                                                    };
+                                                                                    updateStepConfig(selectedStep.id, 'buttons', newButtons);
+                                                                                }}
+                                                                            />
+                                                                        </div>
+                                                                    )}
+                                                                    {button.action === 'send_text' && (
+                                                                        <div>
+                                                                            <Label className="text-xs">Текст сообщения</Label>
+                                                                            <Textarea
+                                                                                className="mt-1"
+                                                                                placeholder="Введите текст сообщения"
+                                                                                value={button.action_config?.text || ''}
+                                                                                onChange={(e) => {
+                                                                                    const currentButtons = selectedStep.config.buttons || [];
+                                                                                    const newButtons = [...currentButtons];
+                                                                                    newButtons[index] = {
+                                                                                        ...newButtons[index],
+                                                                                        action_config: { ...newButtons[index].action_config, text: e.target.value }
+                                                                                    };
+                                                                                    updateStepConfig(selectedStep.id, 'buttons', newButtons);
+                                                                                }}
+                                                                            />
+                                                                        </div>
+                                                                    )}
+                                                                    {(button.action === 'add_tag' || button.action === 'remove_tag') && (
+                                                                        <div>
+                                                                            <Label className="text-xs">Выберите теги</Label>
+                                                                            <div className="mt-1 space-y-2 max-h-32 overflow-y-auto border rounded p-2">
+                                                                                {tags.map((tag) => {
+                                                                                    const isSelected = button.action_config?.tag_ids?.includes(tag.id);
+                                                                                    return (
+                                                                                        <div key={tag.id} className="flex items-center space-x-2">
+                                                                                            <Checkbox
+                                                                                                checked={isSelected}
+                                                                                                onCheckedChange={(checked) => {
+                                                                                                    const currentButtons = selectedStep.config.buttons || [];
+                                                                                                    const newButtons = [...currentButtons];
+                                                                                                    const currentTagIds = newButtons[index].action_config?.tag_ids || [];
+                                                                                                    const newTagIds = checked
+                                                                                                        ? [...currentTagIds, tag.id]
+                                                                                                        : currentTagIds.filter((id: number) => id !== tag.id);
+                                                                                                    newButtons[index] = {
+                                                                                                        ...newButtons[index],
+                                                                                                        action_config: { ...newButtons[index].action_config, tag_ids: newTagIds }
+                                                                                                    };
+                                                                                                    updateStepConfig(selectedStep.id, 'buttons', newButtons);
+                                                                                                }}
+                                                                                            />
+                                                                                            <Label className="text-sm cursor-pointer">
+                                                                                                <span
+                                                                                                    className="inline-block px-2 py-1 rounded text-xs"
+                                                                                                    style={{ backgroundColor: tag.color + '20', color: tag.color }}
+                                                                                                >
+                                                                                                    {tag.name}
+                                                                                                </span>
+                                                                                            </Label>
+                                                                                        </div>
+                                                                                    );
+                                                                                })}
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
                                                                 </div>
+                                                            ))}
+                                                            {(!selectedStep.config.buttons || selectedStep.config.buttons.length === 0) && (
+                                                                <p className="text-sm text-muted-foreground text-center py-4">
+                                                                    Нет кнопок. Нажмите "Добавить кнопку" для создания.
+                                                                </p>
                                                             )}
                                                         </div>
-                                                    ))}
-                                                    {(!selectedStep.config.buttons || selectedStep.config.buttons.length === 0) && (
-                                                        <p className="text-sm text-muted-foreground text-center py-4">
-                                                            Нет кнопок. Нажмите "Добавить кнопку" для создания.
-                                                        </p>
-                                                    )}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        </div>
-                                    )}
+                                            )}
 
-                                    {selectedStep.type === 'send_image' && (
-                                        <div>
-                                            <Label>Изображение</Label>
-                                            <FileUpload
-                                                type="image"
-                                                value={selectedStep.config.url || ''}
-                                                onChange={(url, filename) => {
-                                                    updateStepConfigMultiple(selectedStep.id, {
-                                                        url,
-                                                        filename: filename || ''
-                                                    });
-                                                }}
-                                                onDelete={() => {
-                                                    updateStepConfig(selectedStep.id, 'url', '');
-                                                    updateStepConfig(selectedStep.id, 'filename', '');
-                                                }}
-                                            />
-                                            <div className="mt-3">
-                                                <Label>Подпись к изображению</Label>
-                                                <Textarea
-                                                    className="mt-1"
-                                                    placeholder="Введите подпись..."
-                                                    value={selectedStep.config.text || ''}
-                                                    onChange={(e) => updateStepConfig(selectedStep.id, 'text', e.target.value)}
-                                                    rows={3}
-                                                />
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {selectedStep.type === 'send_video' && (
-                                        <div>
-                                            <Label>Видео</Label>
-                                            <FileUpload
-                                                type="video"
-                                                value={selectedStep.config.url || ''}
-                                                onChange={(url, filename) => {
-                                                    updateStepConfigMultiple(selectedStep.id, {
-                                                        url,
-                                                        filename: filename || ''
-                                                    });
-                                                }}
-                                                onDelete={() => {
-                                                    updateStepConfig(selectedStep.id, 'url', '');
-                                                    updateStepConfig(selectedStep.id, 'filename', '');
-                                                }}
-                                            />
-                                            <div className="mt-3">
-                                                <Label>Подпись к видео</Label>
-                                                <Textarea
-                                                    className="mt-1"
-                                                    placeholder="Введите подпись..."
-                                                    value={selectedStep.config.text || ''}
-                                                    onChange={(e) => updateStepConfig(selectedStep.id, 'text', e.target.value)}
-                                                    rows={3}
-                                                />
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {selectedStep.type === 'send_file' && (
-                                        <div>
-                                            <Label>Файл</Label>
-                                            <FileUpload
-                                                type="document"
-                                                value={selectedStep.config.url || ''}
-                                                onChange={(url, filename) => {
-                                                    updateStepConfigMultiple(selectedStep.id, {
-                                                        url,
-                                                        filename: filename || ''
-                                                    });
-                                                }}
-                                                onDelete={() => {
-                                                    updateStepConfig(selectedStep.id, 'url', '');
-                                                    updateStepConfig(selectedStep.id, 'filename', '');
-                                                }}
-                                            />
-                                            <div className="mt-3">
-                                                <Label>Подпись к файлу</Label>
-                                                <Textarea
-                                                    className="mt-1"
-                                                    placeholder="Введите подпись..."
-                                                    value={selectedStep.config.text || ''}
-                                                    onChange={(e) => updateStepConfig(selectedStep.id, 'text', e.target.value)}
-                                                    rows={3}
-                                                />
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {selectedStep.type === 'delay' && (
-                                        <div>
-                                            <Label>Задержка (секунды)</Label>
-                                            <Input
-                                                className="mt-1"
-                                                type="number"
-                                                min={1}
-                                                value={selectedStep.config.delay_seconds || 5}
-                                                onChange={(e) => updateStepConfig(selectedStep.id, 'delay_seconds', parseInt(e.target.value))}
-                                            />
-                                        </div>
-                                    )}
-
-                                    {selectedStep.type === 'add_tag' && (
-                                        <div>
-                                            <Label>Теги</Label>
-                                            <div className="mt-2 space-y-2 max-h-64 overflow-y-auto border rounded-md p-3">
-                                                {tags.length === 0 ? (
-                                                    <p className="text-sm text-muted-foreground text-center py-2">
-                                                        Нет доступных тегов
-                                                    </p>
-                                                ) : (
-                                                    tags.map((tag) => {
-                                                        const tagIds = selectedStep.config.tag_ids || [];
-                                                        const tagId = selectedStep.config.tag_id; // Backward compatibility
-                                                        const isSelected = tagIds.includes(tag.id) || tagId === tag.id;
-                                                        
-                                                        return (
-                                                            <label
-                                                                key={tag.id}
-                                                                className="flex items-center gap-2 p-2 rounded hover:bg-accent cursor-pointer"
-                                                            >
-                                                                <Checkbox
-                                                                    checked={isSelected}
-                                                                    onCheckedChange={(checked) => {
-                                                                        // Handle boolean or "indeterminate" from Radix UI
-                                                                        if (checked === "indeterminate") return;
-                                                                        
-                                                                        setSteps(prevSteps => prevSteps.map(step => {
-                                                                            if (step.id === selectedStep.id) {
-                                                                                const currentTagIds = step.config.tag_ids || [];
-                                                                                const stepTagId = step.config.tag_id; // Backward compatibility
-                                                                                
-                                                                                // Migrate from old single tag_id to array
-                                                                                const allTagIds = stepTagId && !currentTagIds.length 
-                                                                                    ? [stepTagId] 
-                                                                                    : currentTagIds;
-                                                                                
-                                                                                let newTagIds: number[];
-                                                                                if (checked === true) {
-                                                                                    // Avoid duplicates
-                                                                                    if (!allTagIds.includes(tag.id)) {
-                                                                                        newTagIds = [...allTagIds, tag.id];
-                                                                                    } else {
-                                                                                        newTagIds = allTagIds;
-                                                                                    }
-                                                                                } else {
-                                                                                    newTagIds = allTagIds.filter(id => id !== tag.id);
-                                                                                }
-                                                                                
-                                                                                const newConfig = { ...step.config };
-                                                                                newConfig.tag_ids = newTagIds;
-                                                                                
-                                                                                // Clear old single tag fields when using new array format
-                                                                                if (newTagIds.length > 0) {
-                                                                                    delete newConfig.tag_id;
-                                                                                    delete newConfig.tag_name;
-                                                                                }
-                                                                                
-                                                                                return {
-                                                                                    ...step,
-                                                                                    config: newConfig,
-                                                                                };
-                                                                            }
-                                                                            return step;
-                                                                        }));
-                                                                    }}
-                                                                />
-                                                                <div className="flex items-center gap-2 flex-1">
-                                                                    <div
-                                                                        className="w-3 h-3 rounded-full"
-                                                                        style={{ backgroundColor: tag.color }}
-                                                                    />
-                                                                    <span className="text-sm">{tag.name}</span>
-                                                                </div>
-                                                            </label>
-                                                        );
-                                                    })
-                                                )}
-                                            </div>
-                                            {(() => {
-                                                const tagIds = selectedStep.config.tag_ids || [];
-                                                const tagId = selectedStep.config.tag_id;
-                                                const selectedCount = tagIds.length || (tagId ? 1 : 0);
-                                                return selectedCount > 0 && (
-                                                    <p className="text-xs text-muted-foreground mt-2">
-                                                        Выбрано тегов: {selectedCount}
-                                                    </p>
-                                                );
-                                            })()}
-                                        </div>
-                                    )}
-
-                                    {selectedStep.type === 'remove_tag' && (
-                                        <div>
-                                            <Label>Тег для удаления</Label>
-                                            <Select
-                                                value={selectedStep.config.tag_id?.toString() || ''}
-                                                onValueChange={(v) => {
-                                                    const tag = tags.find(t => t.id.toString() === v);
-                                                    updateStepConfig(selectedStep.id, 'tag_id', parseInt(v));
-                                                    updateStepConfig(selectedStep.id, 'tag_name', tag?.name || '');
-                                                }}
-                                            >
-                                                <SelectTrigger className="mt-1">
-                                                    <SelectValue placeholder="Выберите тег" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {tags.map((tag) => (
-                                                        <SelectItem key={tag.id} value={tag.id.toString()}>
-                                                            <div className="flex items-center gap-2">
-                                                                <div
-                                                                    className="w-3 h-3 rounded-full"
-                                                                    style={{ backgroundColor: tag.color }}
-                                                                />
-                                                                {tag.name}
-                                                            </div>
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                    )}
-
-                                    {selectedStep.type === 'condition' && (
-                                        <>
-                                            <div>
-                                                <Label>Тип условия</Label>
-                                                <Select
-                                                    value={selectedStep.config.condition_type || ''}
-                                                    onValueChange={(v) => updateStepConfig(selectedStep.id, 'condition_type', v)}
-                                                >
-                                                    <SelectTrigger className="mt-1">
-                                                        <SelectValue placeholder="Выберите условие" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="has_tag">Есть тег</SelectItem>
-                                                        <SelectItem value="message_contains">Сообщение содержит</SelectItem>
-                                                        <SelectItem value="any_message">Любое сообщение</SelectItem>
-                                                        <SelectItem value="is_new_client">Новый клиент</SelectItem>
-                                                    </SelectContent>
-                                                </Select>
-                                            </div>
-                                            {selectedStep.config.condition_type === 'has_tag' && (
+                                            {selectedStep.type === 'send_image' && (
                                                 <div>
-                                                    <Label>Выберите тег</Label>
+                                                    <Label>Изображение</Label>
+                                                    <FileUpload
+                                                        type="image"
+                                                        value={selectedStep.config.url || ''}
+                                                        onChange={(url, filename) => {
+                                                            updateStepConfigMultiple(selectedStep.id, {
+                                                                url,
+                                                                filename: filename || ''
+                                                            });
+                                                        }}
+                                                        onDelete={() => {
+                                                            updateStepConfig(selectedStep.id, 'url', '');
+                                                            updateStepConfig(selectedStep.id, 'filename', '');
+                                                        }}
+                                                    />
+                                                    <div className="mt-3">
+                                                        <Label>Подпись к изображению</Label>
+                                                        <Textarea
+                                                            className="mt-1"
+                                                            placeholder="Введите подпись..."
+                                                            value={selectedStep.config.text || ''}
+                                                            onChange={(e) => updateStepConfig(selectedStep.id, 'text', e.target.value)}
+                                                            rows={3}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {selectedStep.type === 'send_video' && (
+                                                <div>
+                                                    <Label>Видео</Label>
+                                                    <FileUpload
+                                                        type="video"
+                                                        value={selectedStep.config.url || ''}
+                                                        onChange={(url, filename) => {
+                                                            updateStepConfigMultiple(selectedStep.id, {
+                                                                url,
+                                                                filename: filename || ''
+                                                            });
+                                                        }}
+                                                        onDelete={() => {
+                                                            updateStepConfig(selectedStep.id, 'url', '');
+                                                            updateStepConfig(selectedStep.id, 'filename', '');
+                                                        }}
+                                                    />
+                                                    <div className="mt-3">
+                                                        <Label>Подпись к видео</Label>
+                                                        <Textarea
+                                                            className="mt-1"
+                                                            placeholder="Введите подпись..."
+                                                            value={selectedStep.config.text || ''}
+                                                            onChange={(e) => updateStepConfig(selectedStep.id, 'text', e.target.value)}
+                                                            rows={3}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {selectedStep.type === 'send_file' && (
+                                                <div>
+                                                    <Label>Файл</Label>
+                                                    <FileUpload
+                                                        type="document"
+                                                        value={selectedStep.config.url || ''}
+                                                        onChange={(url, filename) => {
+                                                            updateStepConfigMultiple(selectedStep.id, {
+                                                                url,
+                                                                filename: filename || ''
+                                                            });
+                                                        }}
+                                                        onDelete={() => {
+                                                            updateStepConfig(selectedStep.id, 'url', '');
+                                                            updateStepConfig(selectedStep.id, 'filename', '');
+                                                        }}
+                                                    />
+                                                    <div className="mt-3">
+                                                        <Label>Подпись к файлу</Label>
+                                                        <Textarea
+                                                            className="mt-1"
+                                                            placeholder="Введите подпись..."
+                                                            value={selectedStep.config.text || ''}
+                                                            onChange={(e) => updateStepConfig(selectedStep.id, 'text', e.target.value)}
+                                                            rows={3}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {selectedStep.type === 'delay' && (
+                                                <div>
+                                                    <Label>Задержка (секунды)</Label>
+                                                    <Input
+                                                        className="mt-1"
+                                                        type="number"
+                                                        min={1}
+                                                        value={selectedStep.config.delay_seconds || 5}
+                                                        onChange={(e) => updateStepConfig(selectedStep.id, 'delay_seconds', parseInt(e.target.value))}
+                                                    />
+                                                </div>
+                                            )}
+
+                                            {selectedStep.type === 'add_tag' && (
+                                                <div>
+                                                    <Label>Теги</Label>
+                                                    <div className="mt-2 space-y-2 max-h-64 overflow-y-auto border rounded-md p-3">
+                                                        {tags.length === 0 ? (
+                                                            <p className="text-sm text-muted-foreground text-center py-2">
+                                                                Нет доступных тегов
+                                                            </p>
+                                                        ) : (
+                                                            tags.map((tag) => {
+                                                                const tagIds = selectedStep.config.tag_ids || [];
+                                                                const tagId = selectedStep.config.tag_id; // Backward compatibility
+                                                                const isSelected = tagIds.includes(tag.id) || tagId === tag.id;
+
+                                                                return (
+                                                                    <label
+                                                                        key={tag.id}
+                                                                        className="flex items-center gap-2 p-2 rounded hover:bg-accent cursor-pointer"
+                                                                    >
+                                                                        <Checkbox
+                                                                            checked={isSelected}
+                                                                            onCheckedChange={(checked) => {
+                                                                                // Handle boolean or "indeterminate" from Radix UI
+                                                                                if (checked === "indeterminate") return;
+
+                                                                                setSteps(prevSteps => prevSteps.map(step => {
+                                                                                    if (step.id === selectedStep.id) {
+                                                                                        const currentTagIds = step.config.tag_ids || [];
+                                                                                        const stepTagId = step.config.tag_id; // Backward compatibility
+
+                                                                                        // Migrate from old single tag_id to array
+                                                                                        const allTagIds = stepTagId && !currentTagIds.length
+                                                                                            ? [stepTagId]
+                                                                                            : currentTagIds;
+
+                                                                                        let newTagIds: number[];
+                                                                                        if (checked === true) {
+                                                                                            // Avoid duplicates
+                                                                                            if (!allTagIds.includes(tag.id)) {
+                                                                                                newTagIds = [...allTagIds, tag.id];
+                                                                                            } else {
+                                                                                                newTagIds = allTagIds;
+                                                                                            }
+                                                                                        } else {
+                                                                                            newTagIds = allTagIds.filter(id => id !== tag.id);
+                                                                                        }
+
+                                                                                        const newConfig = { ...step.config };
+                                                                                        newConfig.tag_ids = newTagIds;
+
+                                                                                        // Clear old single tag fields when using new array format
+                                                                                        if (newTagIds.length > 0) {
+                                                                                            delete newConfig.tag_id;
+                                                                                            delete newConfig.tag_name;
+                                                                                        }
+
+                                                                                        return {
+                                                                                            ...step,
+                                                                                            config: newConfig,
+                                                                                        };
+                                                                                    }
+                                                                                    return step;
+                                                                                }));
+                                                                            }}
+                                                                        />
+                                                                        <div className="flex items-center gap-2 flex-1">
+                                                                            <div
+                                                                                className="w-3 h-3 rounded-full"
+                                                                                style={{ backgroundColor: tag.color }}
+                                                                            />
+                                                                            <span className="text-sm">{tag.name}</span>
+                                                                        </div>
+                                                                    </label>
+                                                                );
+                                                            })
+                                                        )}
+                                                    </div>
+                                                    {(() => {
+                                                        const tagIds = selectedStep.config.tag_ids || [];
+                                                        const tagId = selectedStep.config.tag_id;
+                                                        const selectedCount = tagIds.length || (tagId ? 1 : 0);
+                                                        return selectedCount > 0 && (
+                                                            <p className="text-xs text-muted-foreground mt-2">
+                                                                Выбрано тегов: {selectedCount}
+                                                            </p>
+                                                        );
+                                                    })()}
+                                                </div>
+                                            )}
+
+                                            {selectedStep.type === 'remove_tag' && (
+                                                <div>
+                                                    <Label>Тег для удаления</Label>
                                                     <Select
-                                                        value={selectedStep.config.condition_value || ''}
-                                                        onValueChange={(v) => updateStepConfig(selectedStep.id, 'condition_value', v)}
+                                                        value={selectedStep.config.tag_id?.toString() || ''}
+                                                        onValueChange={(v) => {
+                                                            const tag = tags.find(t => t.id.toString() === v);
+                                                            updateStepConfig(selectedStep.id, 'tag_id', parseInt(v));
+                                                            updateStepConfig(selectedStep.id, 'tag_name', tag?.name || '');
+                                                        }}
                                                     >
                                                         <SelectTrigger className="mt-1">
                                                             <SelectValue placeholder="Выберите тег" />
@@ -1393,79 +1347,125 @@ export default function AutomationsEdit({ automation, channels, tags, operators 
                                                 </div>
                                             )}
 
-                                            {selectedStep.config.condition_type === 'message_contains' && (
+                                            {selectedStep.type === 'condition' && (
+                                                <>
+                                                    <div>
+                                                        <Label>Тип условия</Label>
+                                                        <Select
+                                                            value={selectedStep.config.condition_type || ''}
+                                                            onValueChange={(v) => updateStepConfig(selectedStep.id, 'condition_type', v)}
+                                                        >
+                                                            <SelectTrigger className="mt-1">
+                                                                <SelectValue placeholder="Выберите условие" />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="has_tag">Есть тег</SelectItem>
+                                                                <SelectItem value="message_contains">Сообщение содержит</SelectItem>
+                                                                <SelectItem value="any_message">Любое сообщение</SelectItem>
+                                                                <SelectItem value="is_new_client">Новый клиент</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                    {selectedStep.config.condition_type === 'has_tag' && (
+                                                        <div>
+                                                            <Label>Выберите тег</Label>
+                                                            <Select
+                                                                value={selectedStep.config.condition_value || ''}
+                                                                onValueChange={(v) => updateStepConfig(selectedStep.id, 'condition_value', v)}
+                                                            >
+                                                                <SelectTrigger className="mt-1">
+                                                                    <SelectValue placeholder="Выберите тег" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    {tags.map((tag) => (
+                                                                        <SelectItem key={tag.id} value={tag.id.toString()}>
+                                                                            <div className="flex items-center gap-2">
+                                                                                <div
+                                                                                    className="w-3 h-3 rounded-full"
+                                                                                    style={{ backgroundColor: tag.color }}
+                                                                                />
+                                                                                {tag.name}
+                                                                            </div>
+                                                                        </SelectItem>
+                                                                    ))}
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                    )}
+
+                                                    {selectedStep.config.condition_type === 'message_contains' && (
+                                                        <div>
+                                                            <Label>Значение</Label>
+                                                            <Input
+                                                                className="mt-1"
+                                                                placeholder="Значение для проверки..."
+                                                                value={selectedStep.config.condition_value || ''}
+                                                                onChange={(e) => updateStepConfig(selectedStep.id, 'condition_value', e.target.value)}
+                                                            />
+                                                        </div>
+                                                    )}
+
+                                                    {selectedStep.config.condition_type === 'any_message' && (
+                                                        <div>
+                                                            <Label>Любое входящее сообщение</Label>
+                                                            <p className="text-sm text-muted-foreground mt-2">Условие срабатывает на любое входящее сообщение и не требует значения.</p>
+                                                        </div>
+                                                    )}
+                                                </>
+                                            )}
+
+                                            {selectedStep.type === 'assign_operator' && (
                                                 <div>
-                                                    <Label>Значение</Label>
-                                                    <Input
-                                                        className="mt-1"
-                                                        placeholder="Значение для проверки..."
-                                                        value={selectedStep.config.condition_value || ''}
-                                                        onChange={(e) => updateStepConfig(selectedStep.id, 'condition_value', e.target.value)}
-                                                    />
+                                                    <Label>Оператор</Label>
+                                                    <Select
+                                                        value={selectedStep.config.operator_id?.toString() || ''}
+                                                        onValueChange={(v) => {
+                                                            updateStepConfig(selectedStep.id, 'operator_id', v ? parseInt(v) : null);
+                                                        }}
+                                                    >
+                                                        <SelectTrigger className="mt-1">
+                                                            <SelectValue placeholder="Выберите оператора" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {operators.map((operator) => (
+                                                                <SelectItem key={operator.id} value={operator.id.toString()}>
+                                                                    {operator.name} {operator.email ? `(${operator.email})` : ''}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
                                                 </div>
                                             )}
 
-                                            {selectedStep.config.condition_type === 'any_message' && (
-                                                <div>
-                                                    <Label>Любое входящее сообщение</Label>
-                                                    <p className="text-sm text-muted-foreground mt-2">Условие срабатывает на любое входящее сообщение и не требует значения.</p>
-                                                </div>
-                                            )}
-                                        </>
-                                    )}
+                                            <div className="flex gap-2 pt-4">
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="flex-1"
+                                                    onClick={() => moveStep(selectedStep.id, 'up')}
+                                                    disabled={steps.findIndex(s => s.id === selectedStep.id) === 0}
+                                                >
+                                                    ↑ Вверх
+                                                </Button>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="flex-1"
+                                                    onClick={() => moveStep(selectedStep.id, 'down')}
+                                                    disabled={steps.findIndex(s => s.id === selectedStep.id) === steps.length - 1}
+                                                >
+                                                    ↓ Вниз
+                                                </Button>
+                                            </div>
 
-                                    {selectedStep.type === 'assign_operator' && (
-                                        <div>
-                                            <Label>Оператор</Label>
-                                            <Select
-                                                value={selectedStep.config.operator_id?.toString() || ''}
-                                                onValueChange={(v) => {
-                                                    updateStepConfig(selectedStep.id, 'operator_id', v ? parseInt(v) : null);
-                                                }}
+                                            <Button
+                                                variant="destructive"
+                                                className="w-full"
+                                                onClick={() => deleteStep(selectedStep.id)}
                                             >
-                                                <SelectTrigger className="mt-1">
-                                                    <SelectValue placeholder="Выберите оператора" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {operators.map((operator) => (
-                                                        <SelectItem key={operator.id} value={operator.id.toString()}>
-                                                            {operator.name} {operator.email ? `(${operator.email})` : ''}
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                    )}
-
-                                    <div className="flex gap-2 pt-4">
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            className="flex-1"
-                                            onClick={() => moveStep(selectedStep.id, 'up')}
-                                            disabled={steps.findIndex(s => s.id === selectedStep.id) === 0}
-                                        >
-                                            ↑ Вверх
-                                        </Button>
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            className="flex-1"
-                                            onClick={() => moveStep(selectedStep.id, 'down')}
-                                            disabled={steps.findIndex(s => s.id === selectedStep.id) === steps.length - 1}
-                                        >
-                                            ↓ Вниз
-                                        </Button>
-                                    </div>
-
-                                    <Button
-                                        variant="destructive"
-                                        className="w-full"
-                                        onClick={() => deleteStep(selectedStep.id)}
-                                    >
-                                        <Trash2 className="mr-2 h-4 w-4" />
-                                        Удалить блок
-                                    </Button>
+                                                <Trash2 className="mr-2 h-4 w-4" />
+                                                Удалить блок
+                                            </Button>
                                         </>
                                     )}
                                 </div>
