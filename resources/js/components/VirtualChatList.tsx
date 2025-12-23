@@ -1,6 +1,6 @@
 import { type Chat } from '@/types';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useEffect, useLayoutEffect } from 'react';
 import ChatListItem from './ChatListItem';
 
 interface VirtualChatListProps {
@@ -18,6 +18,9 @@ function estimateItemHeight(chat: Chat): number {
     return hasTags ? baseHeight + tagRowHeight : baseHeight;
 }
 
+// Session storage key for scroll position
+const SCROLL_POSITION_KEY = 'chat_list_scroll_position';
+
 export default function VirtualChatList({
     chats,
     activeChatId,
@@ -25,6 +28,10 @@ export default function VirtualChatList({
     onMarkAsUnread
 }: VirtualChatListProps) {
     const parentRef = useRef<HTMLDivElement>(null);
+    const hasScrolledToActive = useRef(false);
+
+    // Find the index of the active chat
+    const activeIndex = chats.findIndex(chat => chat.id === activeChatId);
 
     const virtualizer = useVirtualizer({
         count: chats.length,
@@ -36,6 +43,42 @@ export default function VirtualChatList({
             return element.getBoundingClientRect().height;
         },
     });
+
+    // Restore scroll position or scroll to active chat on mount
+    useLayoutEffect(() => {
+        if (!parentRef.current || hasScrolledToActive.current) return;
+
+        // Try to restore saved scroll position first
+        const savedPosition = sessionStorage.getItem(SCROLL_POSITION_KEY);
+
+        if (savedPosition) {
+            const position = parseInt(savedPosition, 10);
+            parentRef.current.scrollTop = position;
+            hasScrolledToActive.current = true;
+        } else if (activeIndex > 0) {
+            // If no saved position, scroll to active chat
+            // Use setTimeout to ensure virtualizer has calculated positions
+            setTimeout(() => {
+                virtualizer.scrollToIndex(activeIndex, { align: 'center' });
+                hasScrolledToActive.current = true;
+            }, 0);
+        } else {
+            hasScrolledToActive.current = true;
+        }
+    }, [activeIndex, virtualizer]);
+
+    // Save scroll position when scrolling
+    useEffect(() => {
+        const element = parentRef.current;
+        if (!element) return;
+
+        const handleScroll = () => {
+            sessionStorage.setItem(SCROLL_POSITION_KEY, String(element.scrollTop));
+        };
+
+        element.addEventListener('scroll', handleScroll, { passive: true });
+        return () => element.removeEventListener('scroll', handleScroll);
+    }, []);
 
     if (chats.length === 0) {
         return (
@@ -85,4 +128,5 @@ export default function VirtualChatList({
         </div>
     );
 }
+
 
