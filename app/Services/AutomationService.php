@@ -103,8 +103,6 @@ class AutomationService
 
     /**
      * Trigger automation when tag is added to client
-     * NOTE: This method is only called when tags are added manually via UI
-     * Automatic tag additions (via buttons/automations) do NOT trigger this
      */
     public function triggerTagAdded(Chat $chat, array $tagIds): void
     {
@@ -136,28 +134,13 @@ class AutomationService
             ->with('steps')
             ->get();
 
-        // Also log all tag_added automations to see which ones are filtered out by channel
-        $allTagAutomations = Automation::where('is_active', true)
-            ->where('trigger', 'tag_added')
-            ->get(['id', 'name', 'channel_id', 'trigger_config']);
-            
         Log::info('Found tag_added automations', [
-            'matching_count' => $automations->count(),
-            'total_tag_added_automations' => $allTagAutomations->count(),
-            'chat_channel_id' => $chat->channel_id,
-            'matching_automations' => $automations->map(fn($a) => [
+            'count' => $automations->count(),
+            'automations' => $automations->map(fn($a) => [
                 'id' => $a->id,
                 'name' => $a->name,
                 'channel_id' => $a->channel_id,
                 'trigger_config' => $a->trigger_config,
-            ])->toArray(),
-            'filtered_out_by_channel' => $allTagAutomations->filter(fn($a) => 
-                $a->channel_id !== null && $a->channel_id != $chat->channel_id
-            )->map(fn($a) => [
-                'id' => $a->id,
-                'name' => $a->name,
-                'automation_channel_id' => $a->channel_id,
-                'chat_channel_id' => $chat->channel_id,
             ])->toArray(),
         ]);
 

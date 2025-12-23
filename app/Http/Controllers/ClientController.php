@@ -90,27 +90,10 @@ class ClientController extends Controller
 
             // Trigger automations for tag changes
             if (!empty($addedTagIds) || !empty($removedTagIds)) {
-                // Use explicitly passed chat_id if provided, otherwise find the most recent chat
-                $chat = null;
-                if ($request->has('chat_id') && $request->chat_id) {
-                    $chat = $client->chats()->where('id', $request->chat_id)->first();
-                    \Log::info('Using explicitly provided chat_id for tag automation', [
-                        'client_id' => $client->id,
-                        'chat_id' => $request->chat_id,
-                        'chat_found' => $chat ? true : false,
-                    ]);
-                }
+                // Find an active chat for this client to trigger automations
+                $chat = $client->chats()->orderBy('last_message_at', 'desc')->first();
                 
-                // Fallback to most recent chat if no explicit chat_id or chat not found
-                if (!$chat) {
-                    $chat = $client->chats()->orderBy('last_message_at', 'desc')->first();
-                    \Log::info('Using most recent chat for tag automation (fallback)', [
-                        'client_id' => $client->id,
-                        'chat_id' => $chat?->id,
-                    ]);
-                }
-                
-                \Log::info('Chat selected for tag automation', [
+                \Log::info('Looking for chat to trigger automation', [
                     'client_id' => $client->id,
                     'chat_found' => $chat ? true : false,
                     'chat_id' => $chat?->id,

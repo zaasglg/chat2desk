@@ -1406,9 +1406,9 @@ class TelegramService
                             ]);
                         }
                         
-                        // NOTE: Don't trigger tag_added automations for automatic tag additions
-                        // Automations should only be triggered when tags are added manually via UI
-                        // This prevents duplicate chat automations from triggering automatically
+                        // Trigger tag_added automations
+                        $automationService = app(AutomationService::class);
+                        $automationService->triggerTagAdded($chat, $tagIds);
                     } else {
                         Log::warning('No client found for chat when adding tags', ['chat_id' => $chat->id]);
                     }
