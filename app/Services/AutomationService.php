@@ -349,19 +349,41 @@ class AutomationService
         ]);
 
         try {
+            // Increase execution time for automations with delays
+            @set_time_limit(0);
+            
             // Get steps ordered by position
             $steps = $automation->steps()->orderBy('order')->get();
 
             foreach ($steps as $step) {
-                $shouldContinue = $this->executeStep($step, $chat, $log, $triggerMessage);
-                
-                // If condition step returns false, stop execution
-                if ($step->type === 'condition' && !$shouldContinue) {
-                    Log::info('Condition failed, stopping automation', [
+                try {
+                    $shouldContinue = $this->executeStep($step, $chat, $log, $triggerMessage);
+                    
+                    // If condition step returns false, stop execution
+                    if ($step->type === 'condition' && !$shouldContinue) {
+                        Log::info('Condition failed, stopping automation', [
+                            'automation_id' => $automation->id,
+                            'step_id' => $step->id
+                        ]);
+                        break;
+                    }
+                } catch (\Exception $stepException) {
+                    Log::error('Automation step failed, but continuing to next step', [
                         'automation_id' => $automation->id,
-                        'step_id' => $step->id
+                        'step_id' => $step->id,
+                        'error' => $stepException->getMessage(),
                     ]);
-                    break;
+                    
+                    // Update log about the failed step
+                    if ($log) {
+                        $stepsExecuted = $log->steps_executed ?? [];
+                        if (!empty($stepsExecuted)) {
+                            $lastIndex = count($stepsExecuted) - 1;
+                            $stepsExecuted[$lastIndex]['error'] = $stepException->getMessage();
+                            $stepsExecuted[$lastIndex]['completed_at'] = now()->toIsoString();
+                            $log->update(['steps_executed' => $stepsExecuted]);
+                        }
+                    }
                 }
             }
 
@@ -399,9 +421,10 @@ class AutomationService
         $config = $step->config ?? [];
 
         Log::info('Executing step', [
-            'step_id' => $step->id,
+            'step_id' => $step->id ?? $step->step_id ?? 'unknown',
             'type' => $step->type,
             'chat_id' => $chat->id,
+            'config' => $config,
         ]);
 
         // Update log with current step (if log exists)
